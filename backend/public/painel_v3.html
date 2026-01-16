@@ -3,410 +3,455 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DispIA - Dashboard Black</title>
+    <title>DispIA - Enterprise Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
     <style>
-        /* FORÇAR MODO DARK DE ALTO CONTRASTE */
-        body {
-            background-color: #000000 !important;
-            color: #ffffff !important;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        :root {
+            --bg-dark: #0f1115; --bg-card: #161b22; --border-color: #262b33;
+            --accent-color: #7c3aed; --text-main: #e2e8f0; --sidebar-width: 300px;
         }
-        
-        /* Cards */
-        .card {
-            background-color: #111111;
-            border: 1px solid #333;
-            box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
-        }
-        .card-header {
-            background-color: #1a1a1a;
-            border-bottom: 1px solid #333;
-            color: #fff;
-        }
-
-        /* Inputs e Textareas - Correção de legibilidade */
-        .form-control, .form-select {
-            background-color: #222 !important;
-            border: 1px solid #444 !important;
-            color: #fff !important;
-        }
-        .form-control:focus {
-            background-color: #222 !important;
-            color: #fff !important;
-            border-color: #8b5cf6;
-            box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25);
-        }
-        /* Placeholder mais claro */
-        ::placeholder { color: #888 !important; opacity: 1; }
-
-        /* Botões */
-        .btn-primary {
-            background-color: #6d28d9;
-            border-color: #6d28d9;
-        }
-        .btn-primary:hover { background-color: #5b21b6; }
-        
-        /* Console de Logs */
-        .console-box {
-            background: #0a0a0a;
-            border: 1px solid #333;
-            color: #0f0;
-            font-family: monospace;
-            height: 200px;
-            overflow-y: auto;
-            padding: 10px;
-            font-size: 12px;
-        }
-        
-        /* Utilitários */
-        .hidden { display: none !important; }
-        .text-accent { color: #a78bfa; }
-        
-        /* Footer */
-        footer {
-            margin-top: 40px;
-            padding: 20px;
-            text-align: center;
-            border-top: 1px solid #222;
-            color: #555;
-        }
+        body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: var(--sidebar-width); background-color: var(--bg-card); border-right: 1px solid var(--border-color); padding: 20px; overflow-y: auto; z-index: 99; }
+        .main-content { margin-left: var(--sidebar-width); padding: 30px; }
+        .card-custom { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+        .card-header-custom { padding: 15px; border-bottom: 1px solid var(--border-color); font-weight: 600; font-size: 0.9rem; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+        .form-control, .form-select { background-color: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 6px; font-size: 0.85rem; }
+        .form-control:focus { background-color: #0d1117; color: #fff; border-color: var(--accent-color); box-shadow: none; }
+        .form-label { font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+        .days-wrapper { display: flex; justify-content: space-between; gap: 2px; }
+        .day-box input { display: none; }
+        .day-box label { cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 5px; background: #21262d; border: 1px solid #30363d; font-size: 0.7rem; color: #777; transition: 0.2s; }
+        .day-box input:checked + label { background: var(--accent-color); color: #fff; border-color: var(--accent-color); }
+        .btn-primary-custom { background-color: var(--accent-color); border: none; color: white; padding: 10px; border-radius: 6px; width: 100%; font-weight: 600; transition: 0.2s; }
+        .btn-primary-custom:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary-custom:disabled { background-color: #333; cursor: not-allowed; }
+        .terminal-window { background-color: #0d1117; border: 1px solid #30363d; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; height: 300px; overflow-y: auto; padding: 10px; color: #ccc; }
+        .log-line { border-bottom: 1px solid #1c2128; padding: 2px 0; display: block; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .dot-green { background: #3fb950; box-shadow: 0 0 5px #3fb950; }
+        .dot-red { background: #f85149; }
+        .info-box { background: #21262d; border-radius: 6px; padding: 10px; font-size: 0.8rem; margin-bottom: 15px; }
+        .info-label { color: #8b949e; display: block; font-size: 0.7rem; }
+        .info-val { color: #fff; font-weight: 600; }
     </style>
 </head>
-<body class="py-4">
+<body>
 
-<div class="container">
-    
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold"><i class="fa-brands fa-whatsapp text-success"></i> Disp<span class="text-accent">IA</span></h2>
-        <div>
-            <span class="badge bg-secondary" id="statusBadge">DESCONECTADO</span>
-            <small class="d-block text-end text-muted" style="font-size: 10px;" id="sessionIdDisplay">Carregando ID...</small>
-        </div>
+<nav class="sidebar">
+    <div class="mb-4">
+        <h5 class="fw-bold"><i class="fab fa-whatsapp text-success"></i> Disp<span style="color:var(--accent-color)">IA</span> <small class="fs-6 text-muted">Pro</small></h5>
     </div>
 
-    <input type="hidden" id="sessionId">
-    <input type="hidden" id="webhookUrl" value="http://localhost:3000/webhook/test">
-
-    <div class="row">
-        <div class="col-md-4">
-            
-            <div class="card mb-4">
-                <div class="card-header fw-bold">1. Conexão</div>
-                <div class="card-body text-center">
-                    
-                    <div id="connectBtnArea">
-                        <button onclick="conectar()" id="btnConnect" class="btn btn-primary w-100 btn-lg">
-                            <i class="fa-solid fa-power-off"></i> CONECTAR SESSÃO
-                        </button>
-                    </div>
-
-                    <div id="qrCodeArea" class="hidden mt-3">
-                        <div class="alert alert-info py-1 mb-2">Escaneie o QR Code abaixo:</div>
-                        <div id="qrcode" class="d-flex justify-content-center bg-white p-2 rounded mb-2"></div>
-                    </div>
-
-                    <div id="disconnectArea" class="hidden mt-3">
-                        <div class="alert alert-success py-1"><i class="fa-solid fa-check"></i> Sessão Ativa</div>
-                        <button onclick="desconectar()" class="btn btn-outline-danger w-100 btn-sm">Desconectar</button>
-                    </div>
-
-                </div>
+    <div class="card-custom">
+        <div class="card-header-custom">Status da Sessão</div>
+        <div class="p-3">
+            <div id="connectionStatus" class="text-center mb-3">
+                <span class="status-dot dot-red" id="dotStatus"></span>
+                <span id="txtStatus" class="fw-bold">DESCONECTADO</span>
             </div>
-
-            <div class="card mb-4">
-                <div class="card-header fw-bold">2. Anti-Ban (Delay)</div>
-                <div class="card-body">
-                    <div class="input-group">
-                        <span class="input-group-text bg-dark text-white border-secondary">Min (s)</span>
-                        <input type="number" id="minDelay" class="form-control" value="10">
-                        <span class="input-group-text bg-dark text-white border-secondary">Max (s)</span>
-                        <input type="number" id="maxDelay" class="form-control" value="30">
+            <div class="info-box d-none" id="serverDetails">
+                <div class="row g-2">
+                    <div class="col-12">
+                        <span class="info-label">BOT CONECTADO</span>
+                        <span class="info-val text-success" id="lblBotPhone">...</span>
+                    </div>
+                    <div class="col-12 border-top border-secondary pt-2">
+                        <span class="info-label">SERVIDOR / LOCAL</span>
+                        <span class="info-val" id="lblServerInfo">...</span>
                     </div>
                 </div>
             </div>
-
-        </div>
-
-        <div class="col-md-8">
-            <div class="card mb-4">
-                <div class="card-header fw-bold">3. Configurar Disparo</div>
-                <div class="card-body">
-                    
-                    <div class="mb-3">
-                        <label class="form-label text-accent">Mensagem:</label>
-                        <textarea id="messageText" class="form-control" rows="4" placeholder="Digite sua mensagem..."></textarea>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label text-accent"><i class="fa-solid fa-paperclip"></i> Anexo (Opcional):</label>
-                        <input type="file" id="mediaInput" class="form-control">
-                    </div>
-
-                    <div class="mb-3 p-3 border border-secondary rounded bg-dark">
-                        <label class="form-label text-warning mb-0"><i class="fa-solid fa-file-excel"></i> Importar Excel (.xlsx)</label>
-                        <input type="file" id="excelInput" class="form-control mt-2" onchange="lerExcel()">
-                        <small id="fileStatus" class="text-muted d-block mt-1">Nenhum arquivo selecionado</small>
-                    </div>
-
-                    <button onclick="iniciarCampanha()" id="btnSend" class="btn btn-success w-100 py-3 fw-bold fs-5" disabled>
-                        <i class="fa-solid fa-rocket"></i> INICIAR CAMPANHA EM LOTE
-                    </button>
-
-                </div>
+            <div class="d-grid gap-2">
+                <button onclick="conectar()" id="btnConnect" class="btn btn-primary-custom btn-sm">CONECTAR</button>
+                <button onclick="desconectar()" id="btnDisconnect" class="btn btn-outline-danger btn-sm d-none">DESCONECTAR</button>
             </div>
-
-            <div class="card">
-                <div class="card-header d-flex justify-content-between">
-                    <span>Log de Envios</span>
-                    <span id="progressCount" class="badge bg-dark">0/0</span>
-                </div>
-                <div id="consoleLog" class="console-box">
-                    <div>> Aguardando comando...</div>
-                </div>
+            <div id="qrArea" class="mt-3 bg-white p-2 rounded d-none text-center">
+                <div id="qrcode" class="d-flex justify-content-center"></div>
+                <small class="text-dark d-block mt-1">Escaneie Agora</small>
             </div>
         </div>
     </div>
 
-    <footer>
-        Desenvolvido por <strong>The Biazolli Company</strong> &copy; 2026
-    </footer>
+    <div class="card-custom">
+        <div class="card-header-custom">Configurações de Disparo</div>
+        <div class="p-3">
+            <div class="mb-3">
+                <label class="form-label">Delay (Segundos)</label>
+                <div class="input-group input-group-sm">
+                    <input type="number" id="minDelay" class="form-control text-center" value="15">
+                    <span class="input-group-text bg-dark border-secondary">-</span>
+                    <input type="number" id="maxDelay" class="form-control text-center" value="45">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Janela de Horário</label>
+                <div class="d-flex gap-2">
+                    <input type="time" id="timeStart" class="form-control form-control-sm" value="08:00">
+                    <input type="time" id="timeEnd" class="form-control form-control-sm" value="18:00">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Dias Permitidos</label>
+                <div class="days-wrapper">
+                    <div class="day-box"><input type="checkbox" id="d_0"><label for="d_0">D</label></div>
+                    <div class="day-box"><input type="checkbox" id="d_1" checked><label for="d_1">S</label></div>
+                    <div class="day-box"><input type="checkbox" id="d_2" checked><label for="d_2">T</label></div>
+                    <div class="day-box"><input type="checkbox" id="d_3" checked><label for="d_3">Q</label></div>
+                    <div class="day-box"><input type="checkbox" id="d_4" checked><label for="d_4">Q</label></div>
+                    <div class="day-box"><input type="checkbox" id="d_5" checked><label for="d_5">S</label></div>
+                    <div class="day-box"><input type="checkbox" id="d_6"><label for="d_6">S</label></div>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Filtrar Estado (DDD)</label>
+                <select id="selectEstado" class="form-select form-select-sm">
+                    <option value="TODOS">Todos (Brasil)</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Limite Diário</label>
+                <input type="number" id="dailyLimit" class="form-control form-control-sm" value="500">
+            </div>
+        </div>
+    </div>
+</nav>
 
+<div class="main-content">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="card-custom h-100">
+                    <div class="card-header-custom">
+                        <span class="text-accent"><i class="fas fa-plus-circle"></i> Nova Campanha</span>
+                        <small class="text-muted" id="idDisplay">ID: ...</small>
+                    </div>
+                    <div class="p-4">
+                        <div class="mb-3">
+                            <label class="form-label">Mensagem</label>
+                            <textarea id="msgInput" class="form-control" rows="5" placeholder="Digite o texto do disparo..."></textarea>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-6">
+                                <label class="form-label"><i class="fas fa-paperclip"></i> Arquivo (Opcional)</label>
+                                <input type="file" id="mediaInput" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label"><i class="fas fa-file-excel"></i> Lista Excel</label>
+                                <input type="file" id="excelInput" class="form-control form-control-sm" onchange="lerExcel()">
+                            </div>
+                        </div>
+                        <div id="fileInfo" class="alert alert-success py-2 d-none" style="font-size:0.8rem">
+                            <i class="fas fa-check"></i> <strong id="txtContatos">0</strong> números identificados.
+                        </div>
+                        <button onclick="addJob()" id="btnStart" class="btn btn-primary-custom" disabled>ADICIONAR À FILA</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card-custom">
+                    <div class="card-header-custom">
+                        <span><i class="fas fa-layer-group"></i> Fila de Processamento</span>
+                        <span class="badge bg-secondary" id="jobCount">0 Jobs</span>
+                    </div>
+                    <div class="p-2" id="jobContainer" style="max-height: 250px; overflow-y: auto;">
+                        <div class="text-center text-muted mt-4" id="emptyJobs">Nenhuma campanha ativa.</div>
+                    </div>
+                </div>
+                <div class="card-custom mt-3">
+                    <div class="card-header-custom py-2">
+                        <small><i class="fas fa-terminal"></i> Logs do Servidor (Processamento)</small>
+                    </div>
+                    <div id="terminal" class="terminal-window">
+                        <span class="log-line">> Aguardando processos...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<input type="hidden" id="sessionId">
+
 <script>
-    // --- 1. GERAÇÃO DE SESSÃO AUTOMÁTICA ---
-    const sessionKey = 'dispia_session_v1';
-    let mySessionId = localStorage.getItem(sessionKey);
+    const estadosDDD = {
+        "AC": [68], "AL": [82], "AM": [92, 97], "AP": [96], "BA": [71, 73, 74, 75, 77],
+        "CE": [85, 88], "DF": [61], "ES": [27, 28], "GO": [62, 64], "MA": [98, 99],
+        "MG": [31, 32, 33, 34, 35, 37, 38], "MS": [67], "MT": [65, 66], "PA": [91, 93, 94],
+        "PB": [83], "PE": [81, 87], "PI": [86, 89], "PR": [41, 42, 43, 44, 45, 46],
+        "RJ": [21, 22, 24], "RN": [84], "RO": [69], "RR": [95], "RS": [51, 53, 54, 55],
+        "SC": [47, 48, 49], "SE": [79], "SP": [11, 12, 13, 14, 15, 16, 17, 18, 19], "TO": [63]
+    };
     
-    if (!mySessionId) {
-        mySessionId = 'sessao_' + Math.floor(Math.random() * 99999);
-        localStorage.setItem(sessionKey, mySessionId);
+    const selectEstado = document.getElementById('selectEstado');
+    Object.keys(estadosDDD).sort().forEach(sigla => {
+        const opt = document.createElement('option');
+        opt.value = sigla; opt.innerText = sigla;
+        selectEstado.appendChild(opt);
+    });
+
+    let myId = localStorage.getItem('dispia_session_id');
+    if (!myId || myId === 'undefined') {
+        myId = 'sessao_' + Math.floor(Math.random() * 100000);
+        localStorage.setItem('dispia_session_id', myId);
     }
-    
-    document.getElementById('sessionId').value = mySessionId;
-    document.getElementById('sessionIdDisplay').innerText = 'ID: ' + mySessionId;
+    document.getElementById('sessionId').value = myId;
+    document.getElementById('idDisplay').innerText = `ID: ${myId}`;
 
-    // Variáveis Globais
-    let contacts = [];
-    let isRunning = false;
+    let contactsBuffer = [];
+    let jobs = [];
+    let isProcessing = false;
 
-    // --- 2. FUNÇÕES DE LOG (Console na tela) ---
-    function log(msg, type = 'info') {
-        const consoleDiv = document.getElementById('consoleLog');
-        const color = type === 'error' ? 'red' : (type === 'success' ? '#0f0' : '#ccc');
-        const time = new Date().toLocaleTimeString();
-        consoleDiv.innerHTML = `<div style="color:${color}">[${time}] ${msg}</div>` + consoleDiv.innerHTML;
-    }
-
-    // --- 3. CONEXÃO COM BACKEND ---
-    async function conectar() {
-        const btn = document.getElementById('btnConnect');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Solicitando...';
-
-        const sessionId = document.getElementById('sessionId').value;
-        const webhook = document.getElementById('webhookUrl').value;
-
-        log(`Iniciando conexão para sessão: ${sessionId}...`);
-
-        try {
-            // Chama a rota de start
-            const res = await fetch('/session/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId: sessionId, webhookUrl: webhook })
-            });
-
-            const data = await res.json();
-            log('Resposta do servidor: ' + JSON.stringify(data));
-
-            // Inicia loop de verificação
-            checkStatus();
-
-        } catch (error) {
-            console.error(error);
-            log('ERRO AO CONECTAR: ' + error.message, 'error');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-power-off"></i> TENTAR NOVAMENTE';
-        }
-    }
-
-    async function checkStatus() {
-        const sessionId = document.getElementById('sessionId').value;
-        const qrDiv = document.getElementById('qrcode');
-        const qrArea = document.getElementById('qrCodeArea');
-        const btnArea = document.getElementById('connectBtnArea');
-        const discArea = document.getElementById('disconnectArea');
-        const statusBadge = document.getElementById('statusBadge');
-
-        log('Verificando status...');
-
-        const interval = setInterval(async () => {
+    window.onload = () => {
+        const savedJobs = localStorage.getItem('dispia_jobs');
+        if (savedJobs) {
             try {
-                const res = await fetch(`/session/status?sessionId=${sessionId}`);
-                const data = await res.json();
-
-                if (data.status === 'connected') {
-                    clearInterval(interval);
-                    qrArea.classList.add('hidden');
-                    btnArea.classList.add('hidden');
-                    discArea.classList.remove('hidden');
-                    statusBadge.innerText = 'CONECTADO 🟢';
-                    statusBadge.className = 'badge bg-success';
-                    log('WhatsApp CONECTADO com sucesso!', 'success');
-                } 
-                else if (data.qrCode) {
-                    btnArea.classList.add('hidden');
-                    qrArea.classList.remove('hidden');
-                    statusBadge.innerText = 'LENDO QR 🟡';
-                    statusBadge.className = 'badge bg-warning text-dark';
-                    
-                    // Renderiza QR Code se mudou
-                    if (qrDiv.innerHTML === '') {
-                        new QRCode(qrDiv, { text: data.qrCode, width: 180, height: 180 });
-                        log('QR Code recebido. Escaneie agora.');
-                    }
+                const parsed = JSON.parse(savedJobs);
+                jobs = parsed.map(j => ({ ...j, status: j.status === 'Rodando' ? 'Pausado' : j.status, media: null }));
+                if(jobs.length > 0) {
+                    document.getElementById('emptyJobs').classList.add('d-none');
+                    jobs.forEach(renderJobCard);
+                    processQueue();
                 }
-            } catch (err) {
-                // Backend pode estar reiniciando
-                console.log('Tentando reconectar status...', err);
-            }
-        }, 3000); // Verifica a cada 3 segundos
+            } catch(e) {}
+        }
+        monitorStatus();
+        monitorLogs();
+    };
+
+    function saveJobs() {
+        const toSave = jobs.map(j => ({...j, media: null}));
+        localStorage.setItem('dispia_jobs', JSON.stringify(toSave));
     }
 
-    async function desconectar() {
-        if(!confirm('Tem certeza?')) return;
-        const sessionId = document.getElementById('sessionId').value;
-        await fetch('/session/logout', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ sessionId })
-        });
-        location.reload();
-    }
-
-    // --- 4. EXCEL ---
     function lerExcel() {
-        const input = document.getElementById('excelInput');
-        const file = input.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheet = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheet];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-            contacts = [];
-            // Varre linhas procurando números
-            jsonData.forEach(row => {
-                row.forEach(cell => {
-                    if (cell) {
-                        let clean = cell.toString().replace(/\D/g, '');
-                        // Lógica simples: se tem mais de 10 digitos, é potencial numero
-                        if (clean.length >= 10) {
-                            if (clean.length <= 11) clean = '55' + clean; // Add DDI BR
-                            contacts.push(clean);
-                        }
+        const f = document.getElementById('excelInput').files[0];
+        if(!f) return;
+        const r = new FileReader();
+        r.onload = (e) => {
+            const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1});
+            contactsBuffer = [];
+            json.forEach(row => {
+                row.forEach(c => {
+                    if(c) {
+                        let n = c.toString().replace(/\D/g,'');
+                        if(n.length>=10) contactsBuffer.push(n.length<=11?'55'+n:n);
                     }
                 });
             });
-
-            // Remove duplicados
-            contacts = [...new Set(contacts)];
-
-            document.getElementById('fileStatus').innerText = `${contacts.length} números carregados prontos para envio.`;
-            document.getElementById('fileStatus').className = 'text-success fw-bold d-block mt-1';
-            
-            if(contacts.length > 0) document.getElementById('btnSend').disabled = false;
+            contactsBuffer = [...new Set(contactsBuffer)];
+            document.getElementById('txtContatos').innerText = contactsBuffer.length;
+            document.getElementById('fileInfo').classList.remove('d-none');
+            if(contactsBuffer.length>0) document.getElementById('btnStart').disabled=false;
         };
-        reader.readAsArrayBuffer(file);
+        r.readAsArrayBuffer(f);
     }
 
-    // --- 5. DISPARO ---
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-    async function iniciarCampanha() {
-        const message = document.getElementById('messageText').value;
-        const media = document.getElementById('mediaInput').files[0];
+    function addJob() {
+        const msg = document.getElementById('msgInput').value;
+        const mediaInput = document.getElementById('mediaInput');
         
-        if (!message && !media) return alert('Escreva uma mensagem ou anexe um arquivo.');
-        if (contacts.length === 0) return alert('Nenhum contato carregado.');
+        if(!msg && !mediaInput.files[0]) return alert('Mensagem ou arquivo necessários.');
 
-        isRunning = true;
-        const btn = document.getElementById('btnSend');
-        btn.disabled = true;
-        btn.innerText = 'ENVIANDO...';
+        const diasSelected = [
+            document.getElementById('d_0').checked,
+            document.getElementById('d_1').checked,
+            document.getElementById('d_2').checked,
+            document.getElementById('d_3').checked,
+            document.getElementById('d_4').checked,
+            document.getElementById('d_5').checked,
+            document.getElementById('d_6').checked
+        ];
 
-        const sessionId = document.getElementById('sessionId').value;
-        const minDelay = parseInt(document.getElementById('minDelay').value);
-        const maxDelay = parseInt(document.getElementById('maxDelay').value);
+        const newJob = {
+            id: Date.now(),
+            contacts: [...contactsBuffer],
+            msg: msg,
+            media: mediaInput.files[0], 
+            hasMedia: !!mediaInput.files[0],
+            config: {
+                min: parseInt(document.getElementById('minDelay').value),
+                max: parseInt(document.getElementById('maxDelay').value),
+                start: document.getElementById('timeStart').value,
+                end: document.getElementById('timeEnd').value,
+                limit: parseInt(document.getElementById('dailyLimit').value),
+                dias: diasSelected,
+                estado: document.getElementById('selectEstado').value
+            },
+            progress: 0,
+            status: 'Fila',
+            canceled: false
+        };
 
-        log('🚀 CAMPANHA INICIADA', 'success');
+        jobs.push(newJob);
+        saveJobs();
+        document.getElementById('emptyJobs').classList.add('d-none');
+        renderJobCard(newJob);
+        document.getElementById('msgInput').value = '';
+        mediaInput.value = '';
+        document.getElementById('fileInfo').classList.add('d-none');
+        document.getElementById('btnStart').disabled = true;
+        processQueue();
+    }
 
-        for (let i = 0; i < contacts.length; i++) {
-            const phone = contacts[i];
-            const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay) * 1000;
+    function renderJobCard(job) {
+        const existing = document.getElementById(`job-${job.id}`);
+        if(existing) existing.remove();
+        const container = document.getElementById('jobContainer');
+        const div = document.createElement('div');
+        div.className = 'card-custom p-3 mb-2 border-secondary';
+        div.id = `job-${job.id}`;
+        let statusColor = 'bg-secondary';
+        if(job.status === 'Rodando') statusColor = 'bg-primary';
+        if(job.status === 'Concluído') statusColor = 'bg-success';
+        if(job.status === 'Cancelado') statusColor = 'bg-danger';
+        if(job.status === 'Pausado') statusColor = 'bg-warning text-dark';
+        const perc = Math.floor((job.progress / job.contacts.length) * 100);
+        const btnCancel = (job.status !== 'Concluído' && job.status !== 'Cancelado') ? `<button onclick="cancelJob(${job.id})" class="btn btn-outline-danger btn-sm py-0" style="font-size:0.7rem">Cancelar</button>` : '';
+        const warnMedia = (job.hasMedia && !job.media && job.status !== 'Concluído') ? `<div class="text-warning small mt-1"><i class="fas fa-exclamation-triangle"></i> Mídia perdida no refresh. Envio será apenas texto.</div>` : '';
 
-            document.getElementById('progressCount').innerText = `${i+1}/${contacts.length}`;
-            log(`Enviando para ${phone}...`);
+        div.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong><i class="fas fa-hashtag"></i> ${job.id}</strong>
+                <div><span class="badge ${statusColor}" id="badge-${job.id}">${job.status}</span> ${btnCancel}</div>
+            </div>
+            <div class="progress" style="height: 6px; background-color: #333;"><div class="progress-bar bg-info" style="width: ${perc}%"></div></div>
+            <div class="d-flex justify-content-between mt-1 text-muted" style="font-size:0.75rem"><span>${job.progress}/${job.contacts.length}</span><span>${perc}%</span></div>
+            ${warnMedia}
+        `;
+        container.prepend(div);
+        document.getElementById('jobCount').innerText = `${jobs.length} Jobs`;
+    }
 
-            try {
-                // Se tem arquivo, usa rota upload, senão rota texto
-                let response;
-                if (media) {
-                    const formData = new FormData();
-                    formData.append('sessionId', sessionId);
-                    formData.append('number', phone);
-                    formData.append('caption', message); // Texto vira legenda
-                    
-                    // Define tipo bruto
-                    let type = 'document';
-                    if(media.type.includes('image')) type = 'image';
-                    if(media.type.includes('video')) type = 'video';
-                    formData.append('type', type);
-                    formData.append('file', media);
+    function cancelJob(id) {
+        const j = jobs.find(x => x.id === id);
+        if(j) { j.canceled = true; j.status = 'Cancelado'; renderJobCard(j); saveJobs(); }
+    }
 
-                    response = await fetch('/message/upload', { method: 'POST', body: formData });
-                } else {
-                    response = await fetch('/message/text', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ sessionId, number: phone, message })
-                    });
-                }
+    async function processQueue() {
+        if(isProcessing) return;
+        isProcessing = true;
+        const job = jobs.find(j => (j.status === 'Fila' || j.status === 'Rodando' || j.status === 'Pausado') && !j.canceled);
+        if(!job) { isProcessing = false; return; }
 
-                if (response.ok) {
-                    log(`✅ ${phone}: Sucesso`);
-                } else {
-                    log(`❌ ${phone}: Falha`, 'error');
-                }
+        job.status = 'Rodando'; renderJobCard(job); saveJobs();
 
-            } catch (err) {
-                log(`❌ Erro no envio: ${err.message}`, 'error');
+        for (let i = job.progress; i < job.contacts.length; i++) {
+            if(job.canceled) { job.status = 'Cancelado'; renderJobCard(job); saveJobs(); isProcessing = false; processQueue(); return; }
+            await checkAntiBan(job.config, job.id);
+            const phone = job.contacts[i];
+            
+            let pularEnvio = false;
+            if (job.config.estado && job.config.estado !== 'TODOS') {
+                const dddsPermitidos = estadosDDD[job.config.estado] || [];
+                const dddContato = parseInt(phone.substring(2, 4));
+                if (!dddsPermitidos.includes(dddContato)) pularEnvio = true;
             }
 
-            if (i < contacts.length - 1) {
-                log(`⏳ Aguardando ${delay/1000}s...`);
-                await sleep(delay);
+            if (!pularEnvio) {
+                try {
+                    if (job.media) {
+                        const fd = new FormData();
+                        fd.append('sessionId', myId); fd.append('number', phone); fd.append('caption', job.msg); fd.append('type', 'document'); fd.append('file', job.media);
+                        await fetch('/message/upload', {method:'POST', body:fd});
+                    } else {
+                        await fetch('/message/text', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sessionId:myId, number:phone, message:job.msg})});
+                    }
+                } catch(e) {}
+            }
+            job.progress = i + 1; renderJobCard(job); saveJobs();
+            if(i < job.contacts.length - 1) {
+                const wait = Math.floor(Math.random() * (job.config.max - job.config.min + 1) + job.config.min) * 1000;
+                await new Promise(r => setTimeout(r, wait));
             }
         }
-
-        log('🏁 CAMPANHA FINALIZADA', 'success');
-        btn.disabled = false;
-        btn.innerText = 'INICIAR NOVA CAMPANHA';
-        alert('Disparos concluídos!');
+        job.status = 'Concluído'; renderJobCard(job); saveJobs();
+        isProcessing = false; processQueue();
     }
-    
-    // Auto-check ao carregar
-    checkStatus();
 
+    async function checkAntiBan(conf, jobId) {
+        while(true) {
+            const currentJob = jobs.find(x => x.id === jobId);
+            if(!currentJob || currentJob.canceled) return;
+            const now = new Date();
+            const diaSemana = now.getDay();
+            const minNow = now.getHours()*60 + now.getMinutes();
+            const [h1, m1] = conf.start.split(':').map(Number);
+            const [h2, m2] = conf.end.split(':').map(Number);
+            
+            let motivo = '';
+            if (conf.dias && !conf.dias[diaSemana]) motivo = 'Dia Não Permitido';
+            else if(minNow < (h1*60+m1) || minNow > (h2*60+m2)) motivo = 'Horário Não Permitido';
+
+            if (motivo) {
+                const el = document.getElementById(`badge-${jobId}`);
+                if(el) { el.className='badge bg-warning text-dark'; el.innerText=`Pausa: ${motivo}`; }
+                await new Promise(r => setTimeout(r, 60000));
+                continue;
+            }
+            const el = document.getElementById(`badge-${jobId}`);
+            if(el) { el.className='badge bg-primary'; el.innerText='Rodando'; }
+            return;
+        }
+    }
+
+    async function conectar() {
+        document.getElementById('btnConnect').disabled = true;
+        await fetch('/session/start', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sessionId: myId}) });
+    }
+
+    async function desconectar() {
+        await fetch('/session/logout', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sessionId: myId}) });
+        location.reload();
+    }
+
+    function monitorStatus() {
+        setInterval(async () => {
+            try {
+                const r = await fetch(`/session/status?sessionId=${myId}`);
+                const d = await r.json();
+                const dot = document.getElementById('dotStatus');
+                const txt = document.getElementById('txtStatus');
+                
+                if(d.status === 'connected') {
+                    dot.className = 'status-dot dot-green'; txt.innerText = 'CONECTADO'; txt.className = 'fw-bold text-success';
+                    document.getElementById('qrArea').classList.add('d-none'); document.getElementById('btnConnect').classList.add('d-none');
+                    document.getElementById('btnDisconnect').classList.remove('d-none'); document.getElementById('serverDetails').classList.remove('d-none');
+                    if(d.phoneNumber) document.getElementById('lblBotPhone').innerText = d.phoneNumber;
+                    if(d.serverInfo) document.getElementById('lblServerInfo').innerText = `${d.serverInfo.ip} (${d.serverInfo.local})`;
+                } else if (d.qrCode) {
+                    dot.className = 'status-dot dot-red'; txt.innerText = 'AGUARDANDO LEITURA'; txt.className = 'fw-bold text-white';
+                    document.getElementById('qrArea').classList.remove('d-none');
+                    const q = document.getElementById('qrcode');
+                    if(q.innerHTML==='') new QRCode(q, {text:d.qrCode, width:150, height:150});
+                }
+            } catch(e) {}
+        }, 3000);
+    }
+
+    function monitorLogs() {
+        setInterval(async () => {
+            try {
+                const r = await fetch('/admin/logs');
+                const d = await r.json();
+                if(d.logs) {
+                    const term = document.getElementById('terminal');
+                    term.innerHTML = d.logs.map(l => {
+                        // CONVERSÃO MÁGICA DE HORA
+                        const horaLocal = new Date(l.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        return `<span class="log-line"><span style="color:#666">[${horaLocal}]</span> ${l.message}</span>`;
+                    }).join('');
+                }
+            } catch(e) {}
+        }, 2000);
+    }
 </script>
 </body>
 </html>

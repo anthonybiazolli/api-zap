@@ -1,21 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { smartContactCleaner, analyzeRisk } from '../utils/dispiaIntelligence';
+import { analyzeRisk } from '../utils/dispiaIntelligence';
 import { jsPDF } from "jspdf";
 
-export default function Disparador({ userId, userToken }) {
+// Configura a URL da API
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+export default function Disparador({ userId }) {
+    const [apiUrl, setApiUrl] = useState('http://localhost:3000');
     const [message, setMessage] = useState('');
     const [contacts, setContacts] = useState([]);
+    const [manualNumber, setManualNumber] = useState('');
     const [invalidContacts, setInvalidContacts] = useState([]);
     const [isSending, setIsSending] = useState(false);
     const [logs, setLogs] = useState([]);
-    
-    // Configurações de "Fugir do Radar"
-    const [minDelay, setMinDelay] = useState(15);
-    const [maxDelay, setMaxDelay] = useState(45);
-    
+    const [minDelay, setMinDelay] = useState(5);
+    const [maxDelay, setMaxDelay] = useState(15);
     const [healthAnalysis, setHealthAnalysis] = useState(null);
 
+    // --- DETECÇÃO AUTOMÁTICA DA URL DA API ---
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const currentUrl = window.location.origin;
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                setApiUrl('http://localhost:3000');
+            } else {
+                const newUrl = currentUrl.replace('3001', '3000');
+                setApiUrl(newUrl);
+            }
+        }
+    }, []);
+
+    // --- NOVA LÓGICA DE LEITURA DE EXCEL (MAIS ROBUSTA) ---
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if(!file) return;
@@ -24,18 +40,49 @@ export default function Disparador({ userId, userToken }) {
         reader.onload = (evt) => {
             const bstr = evt.target.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
-            const wsname = wb.SheetNames[0];
-            const ws = wb.Sheets[wsname];
-            const data = XLSX.utils.sheet_to_json(ws);
+            const ws = wb.Sheets[wb.SheetNames[0]];
             
-            // Aciona a IA de correção
-            const processed = smartContactCleaner(data);
-            setContacts(processed.valid);
-            setInvalidContacts(processed.invalid);
+            // Lê como matriz de dados (Array de Arrays) para ignorar nomes de colunas
+            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
             
-            // Analisa saúde preventiva
-            const risk = analyzeRisk(processed.valid.length, minDelay, maxDelay);
+            const valid = [];
+            const invalid = [];
+
+            // Percorre todas as linhas
+            jsonData.forEach((row) => {
+                // Procura na linha qualquer célula que pareça um telefone
+                const phoneCell = row.find(cell => {
+                    if (!cell) return false;
+                    const clean = String(cell).replace(/\D/g, '');
+                    return clean.length >= 10; // Mínimo 10 dígitos (DDD + Número)
+                });
+
+                if (phoneCell) {
+                    let cleanPhone = String(phoneCell).replace(/\D/g, '');
+                    
+                    // Tratamento Brasil (Adiciona 55 se faltar)
+                    if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
+                        cleanPhone = '55' + cleanPhone;
+                    }
+
+                    // Validação Final
+                    if (cleanPhone.length >= 12 && cleanPhone.length <= 15) {
+                        valid.push({ telefone: cleanPhone });
+                    } else {
+                        invalid.push({ original: phoneCell, reason: "Formato inválido" });
+                    }
+                }
+            });
+            
+            setContacts(valid);
+            setInvalidContacts(invalid);
+            
+            // Análise de Risco
+            const risk = analyzeRisk(valid.length, minDelay, maxDelay);
             setHealthAnalysis(risk);
+
+            // Feedback visual
+            console.log(`Planilha processada: ${valid.length} válidos, ${invalid.length} inválidos.`);
         };
         reader.readAsBinaryString(file);
     };
@@ -43,144 +90,189 @@ export default function Disparador({ userId, userToken }) {
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     const startCampaign = async () => {
+        let targetList = [...contacts];
+        
+        // Se a lista da planilha estiver vazia, tenta o número manual
+        if (targetList.length === 0 && manualNumber) {
+            let cleanManual = manualNumber.replace(/\D/g, '');
+            if (cleanManual.length >= 10 && cleanManual.length <= 11) cleanManual = '55' + cleanManual;
+            targetList = [{ telefone: cleanManual }];
+        }
+
+        if (targetList.length === 0) return alert("Nenhum número válido encontrado. Verifique sua planilha.");
+        if (!message) return alert("Digite uma mensagem para enviar.");
+
         setIsSending(true);
         const newLogs = [];
 
-        // Loop de envio
-        for (let i = 0; i < contacts.length; i++) {
-            const contact = contacts[i];
-            
-            // Lógica de Delay Variável (Anti-Ban)
+        for (let i = 0; i < targetList.length; i++) {
+            const contact = targetList[i];
             const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay) * 1000;
             
-            // Atualiza status na tela
-            setLogs(prev => [`[${new Date().toLocaleTimeString()}] Aguardando ${delay/1000}s para enviar p/ ${contact.telefone}...`, ...prev]);
-            
-            await sleep(delay);
+            if (i > 0) {
+                setLogs(prev => [`⏳ [${new Date().toLocaleTimeString()}] Aguardando ${delay/1000}s...`, ...prev]);
+                await sleep(delay);
+            }
 
             try {
-                // Chamada à SUA API (Backend)
-                const response = await fetch('http://localhost:3000/message/text', {
+                setLogs(prev => [`🚀 Enviando para ${contact.telefone}...`, ...prev]);
+
+                const response = await fetch(`${apiUrl}/message/text`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        sessionId: userId, // Identificador da sessão
+                        sessionId: userId,
                         number: contact.telefone,
                         message: message
                     })
                 });
 
-                const result = await response.json();
-                const status = response.ok ? '✅ Enviado' : '❌ Erro';
+                const data = await response.json();
+                const status = response.ok ? '✅ Enviado' : `❌ Falha: ${data.error || 'Erro desc.'}`;
                 
                 newLogs.push({ phone: contact.telefone, status: status, time: new Date().toLocaleString() });
-                setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${contact.telefone}: ${status}`, ...prev]);
+                setLogs(prev => [`${status} -> ${contact.telefone}`, ...prev]);
 
             } catch (error) {
-                console.error("Erro no envio", error);
-                setLogs(prev => [`[Erro] Falha ao conectar na API`, ...prev]);
+                console.error(error);
+                setLogs(prev => [`❌ Erro de Conexão com Backend`, ...prev]);
             }
         }
         setIsSending(false);
-        generatePDFReport(newLogs);
+        if(newLogs.length > 0) generatePDFReport(newLogs);
     };
 
     const generatePDFReport = (finalLogs) => {
         const doc = new jsPDF();
-        doc.text("Relatório de Envio - DispIA", 10, 10);
+        doc.setFontSize(16);
+        doc.text("Relatório DispIA", 10, 10);
+        doc.setFontSize(10);
         let y = 20;
         finalLogs.forEach((log) => {
             if (y > 280) { doc.addPage(); y = 10; }
-            doc.text(`${log.time} - ${log.phone} - ${log.status}`, 10, y);
-            y += 10;
+            doc.text(`${log.time} | ${log.phone} | ${log.status}`, 10, y);
+            y += 7;
         });
-        doc.save("relatorio_campanha.pdf");
+        doc.save(`Relatorio_${userId}_${new Date().toISOString().slice(0,10)}.pdf`);
     };
 
     return (
-        <div className="bg-white p-6 rounded shadow-lg">
-            <h2 className="text-xl font-bold mb-4 text-purple-700">Disparador de Campanhas</h2>
-            
-            {/* Aviso de Saúde do Número */}
-            {healthAnalysis && (
-                <div className={`p-4 mb-4 rounded border ${healthAnalysis.score < 50 ? 'bg-red-100 border-red-300 text-red-800' : 'bg-green-100 border-green-300 text-green-800'}`}>
-                    <h3 className="font-bold flex items-center">
-                        🛡️ Saúde da Campanha: {healthAnalysis.riskLevel} (Score: {healthAnalysis.score})
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="space-y-6">
+                <div className="bg-dispia-card border border-gray-800 p-6 rounded-xl">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <span className="text-purple-500">1.</span> Configurar Campanha
                     </h3>
-                    <ul className="text-sm mt-2 list-disc list-inside">
-                        {healthAnalysis.recommendations.map((rec, i) => <li key={i}>{rec}</li>)}
-                    </ul>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Coluna da Esquerda: Configuração */}
-                <div>
                     <div className="mb-4">
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Mensagem</label>
+                        <label className="block text-sm text-gray-400 mb-2">Mensagem</label>
                         <textarea 
-                            className="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500" 
-                            rows="5" 
-                            placeholder="Digite sua mensagem aqui (suporta emojis 🚀)..." 
+                            className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none h-32" 
+                            placeholder="Digite sua mensagem aqui..." 
                             value={message}
                             onChange={e => setMessage(e.target.value)}
                         />
                     </div>
-                    
-                    <div className="mb-4">
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Upload de Contatos (Excel/CSV)</label>
-                        <input 
-                            type="file" 
-                            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
-                            onChange={handleFileUpload} 
-                        />
-                    </div>
-
-                    <div className="mb-6 bg-yellow-50 p-4 rounded border border-yellow-200">
-                        <label className="block font-bold text-yellow-800 text-sm mb-2">⏱️ Intervalo Seguro (segundos)</label>
-                        <div className="flex space-x-4 items-center">
-                            <input type="number" value={minDelay} onChange={e => setMinDelay(Number(e.target.value))} className="border p-1 w-20 rounded" />
-                            <span className="text-gray-500">até</span>
-                            <input type="number" value={maxDelay} onChange={e => setMaxDelay(Number(e.target.value))} className="border p-1 w-20 rounded" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="mb-4">
+                            <label className="block text-sm text-gray-400 mb-2 text-green-400">⚡ Teste Rápido (1 Número)</label>
+                            <input 
+                                type="text"
+                                placeholder="5511999998888"
+                                value={manualNumber}
+                                onChange={e => setManualNumber(e.target.value)}
+                                className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label className="block text-sm text-gray-400 mb-2 text-purple-400">📁 Importar Excel</label>
+                            <input 
+                                type="file" 
+                                className="block w-full text-xs text-gray-400 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-purple-900/20 file:text-purple-400 hover:file:bg-purple-900/40 cursor-pointer"
+                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+                                onChange={handleFileUpload} 
+                            />
                         </div>
                     </div>
+                    
+                    {/* Exibe quantos contatos foram achados */}
+                    {contacts.length > 0 && (
+                        <div className="mb-4 p-2 bg-green-900/20 border border-green-800 rounded text-center text-green-400 text-sm font-bold">
+                            {contacts.length} Números encontrados na planilha!
+                        </div>
+                    )}
 
-                    <button 
-                        onClick={startCampaign} 
-                        disabled={isSending || contacts.length === 0}
-                        className={`w-full text-white font-bold py-3 px-4 rounded shadow transition ${isSending ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
-                    >
-                        {isSending ? '🚀 Enviando Campanha...' : `Iniciar Disparo (${contacts.length} contatos)`}
-                    </button>
+                    {healthAnalysis && (
+                        <div className={`p-4 rounded-lg border ${healthAnalysis.score < 60 ? 'bg-red-900/20 border-red-800 text-red-300' : 'bg-green-900/20 border-green-800 text-green-300'}`}>
+                            <div className="font-bold flex justify-between">
+                                <span>Risco: {healthAnalysis.riskLevel}</span>
+                                <span>Score: {healthAnalysis.score}</span>
+                            </div>
+                            <ul className="text-xs mt-2 list-disc list-inside opacity-80">
+                                {healthAnalysis.recommendations.map((rec, i) => <li key={i}>{rec}</li>)}
+                            </ul>
+                        </div>
+                    )}
                 </div>
 
-                {/* Coluna da Direita: Logs e Status */}
-                <div>
-                    <div className="bg-gray-50 p-4 rounded border mb-4 h-40 overflow-y-auto">
-                        <h3 className="font-bold text-gray-700 mb-2">Status da Importação</h3>
-                        {contacts.length === 0 && <p className="text-gray-400 text-sm">Nenhum arquivo carregado.</p>}
-                        {contacts.length > 0 && <p className="text-green-600 font-bold text-sm">✓ {contacts.length} Contatos Válidos</p>}
-                        {invalidContacts.length > 0 && (
-                            <div className="mt-2">
-                                <p className="text-red-600 font-bold text-sm">⚠ {invalidContacts.length} Contatos Inválidos/Corrigidos</p>
-                                <ul className="text-xs text-red-500 mt-1">
-                                    {/* A CORREÇÃO PRINCIPAL ESTÁ AQUI ABAIXO */}
-                                    {invalidContacts.slice(0, 5).map((c, i) => (
-                                        <li key={i}>{c.original} &rarr; {c.reason}</li>
-                                    ))}
-                                    {invalidContacts.length > 5 && <li>...e mais {invalidContacts.length - 5}</li>}
-                                </ul>
-                            </div>
-                        )}
+                <div className="bg-dispia-card border border-gray-800 p-6 rounded-xl">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <span className="text-purple-500">2.</span> Anti-Bloqueio
+                    </h3>
+                    <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                            <label className="text-xs text-gray-500">Delay Mínimo (s)</label>
+                            <input type="number" value={minDelay} onChange={e => setMinDelay(Number(e.target.value))} className="w-full bg-black border border-gray-700 rounded p-2 text-white" />
+                        </div>
+                        <span className="text-gray-500 mt-4">até</span>
+                        <div className="flex-1">
+                            <label className="text-xs text-gray-500">Delay Máximo (s)</label>
+                            <input type="number" value={maxDelay} onChange={e => setMaxDelay(Number(e.target.value))} className="w-full bg-black border border-gray-700 rounded p-2 text-white" />
+                        </div>
                     </div>
+                    <button 
+                        onClick={startCampaign} 
+                        disabled={isSending || (contacts.length === 0 && !manualNumber)}
+                        className={`w-full mt-6 py-4 rounded-lg font-bold text-lg shadow-xl transition transform hover:scale-[1.02]
+                            ${isSending || (contacts.length === 0 && !manualNumber)
+                                ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
+                                : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-500 hover:to-indigo-500'}`}
+                    >
+                        {isSending ? '🚀 Enviando...' : 
+                         manualNumber && contacts.length === 0 ? `ENVIAR TESTE PARA ${manualNumber}` : 
+                         `INICIAR DISPARO (${contacts.length})`}
+                    </button>
+                    <div className="mt-2 text-center">
+                         <small className="text-[10px] text-gray-700">API Conectada em: {apiUrl}</small>
+                    </div>
+                </div>
+            </div>
 
-                    <div className="bg-gray-900 text-green-400 p-4 rounded h-64 overflow-y-auto font-mono text-xs border border-gray-700">
-                        <h3 className="font-bold text-white mb-2 border-b border-gray-700 pb-1">&gt; Terminal de Logs</h3>
+            <div className="space-y-6">
+                <div className="bg-dispia-card border border-gray-800 p-6 rounded-xl h-full flex flex-col">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <span className="text-purple-500">3.</span> Monitoramento
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-black/50 p-3 rounded border border-gray-800 text-center">
+                            <div className="text-2xl font-bold text-green-500">{contacts.length > 0 ? contacts.length : (manualNumber ? 1 : 0)}</div>
+                            <div className="text-xs text-gray-500">Na Fila</div>
+                        </div>
+                        <div className="bg-black/50 p-3 rounded border border-gray-800 text-center">
+                            <div className="text-2xl font-bold text-red-500">{invalidContacts.length}</div>
+                            <div className="text-xs text-gray-500">Inválidos</div>
+                        </div>
+                    </div>
+                    <div className="flex-1 bg-black border border-gray-800 rounded-lg p-4 overflow-y-auto font-mono text-xs max-h-[500px]">
+                        {logs.length === 0 && <span className="text-gray-600 animate-pulse">&gt; Aguardando comando...</span>}
                         {logs.map((log, i) => (
-                            <div key={i} className="mb-1">{typeof log === 'string' ? log : `${log.time} - ${log.phone} - ${log.status}`}</div>
+                            <div key={i} className="mb-1 border-b border-gray-900 pb-1 last:border-0">
+                                {typeof log === 'string' ? <span className="text-gray-400">{log}</span> : 
+                                    <span className={log.status.includes('Enviado') ? 'text-green-400' : 'text-red-400'}>
+                                        {`[${log.time}] ${log.phone} : ${log.status}`}
+                                    </span>
+                                }
+                            </div>
                         ))}
-                        {logs.length === 0 && <span className="animate-pulse">Aguardando comando...</span>}
                     </div>
                 </div>
             </div>

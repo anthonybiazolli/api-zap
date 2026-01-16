@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { startSession, getSession, deleteSession, sendMedia, sendMediaBuffer, formatNumberBR, getAllSessions } from './wabot';
+import { startSession, getSession, deleteSession, sendMedia, sendMediaBuffer, formatNumberBR, getAllSessions, globalLogs, serverInfo } from './wabot';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
@@ -36,7 +36,7 @@ app.post('/session/start', async (req: Request, res: Response) => {
 
     const session = getSession(sessionId);
     if (session && (session.status === 'connected' || session.status === 'reconnecting')) {
-        return res.json({ status: session.status, message: 'Sessão ativa.' });
+        return res.json({ status: session.status, message: 'Sessão já ativa.' });
     }
 
     await startSession(sessionId, phoneNumber, webhookUrl);
@@ -51,17 +51,31 @@ app.post('/session/start', async (req: Request, res: Response) => {
     }, 4000); 
 });
 
+// Atualizado para retornar phone + server info
 app.get('/session/status', (req: Request, res: Response) => {
     const sessionId = (req.query.sessionId as string)?.trim();
     if (!sessionId) return res.status(400).json({ error: 'ID obrigatório' });
+    
     const session = getSession(sessionId);
     if (!session) return res.json({ status: 'not_found' });
-    res.json({ status: session.status, qrCode: session.qrCode, pairingCode: session.pairingCode });
+    
+    res.json({ 
+        status: session.status, 
+        qrCode: session.qrCode, 
+        pairingCode: session.pairingCode,
+        phoneNumber: session.phoneNumber, // Novo
+        serverInfo: serverInfo // Novo
+    });
 });
 
 app.post('/session/logout', (req: Request, res: Response) => {
     deleteSession(req.body.sessionId?.trim());
     res.json({ message: `Sessão removida.` });
+});
+
+// NOVA ROTA: Logs do Sistema para o Frontend
+app.get('/admin/logs', (req: Request, res: Response) => {
+    res.json({ logs: globalLogs });
 });
 
 app.post('/message/text', async (req: Request, res: Response) => {
@@ -78,52 +92,17 @@ app.post('/message/text', async (req: Request, res: Response) => {
     } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/message/media', async (req: Request, res: Response) => {
-    let { sessionId, number, type, url, caption, fileName } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'Sem ID' });
-    
-    try {
-        await sendMedia(sessionId.trim(), number, type, url, caption, fileName);
-        res.json({ success: true, message: 'Mídia enviada' });
-    } catch (error: any) { res.status(500).json({ error: error.message }); }
-});
-
 app.post('/message/upload', (req: any, res: any) => {
     upload.single('file')(req, res, async (err: any) => {
-        if (err instanceof multer.MulterError) {
-            return res.status(400).json({ error: 'Arquivo muito grande! Máximo 10MB.' });
-        } else if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-
-        let { sessionId, number, type, caption } = req.body;
-        if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+        if (err) return res.status(500).json({ error: err.message });
         
-        sessionId = sessionId?.trim();
+        let { sessionId, number, type, caption } = req.body;
+        if (!req.file) return res.status(400).json({ error: 'Sem arquivo.' });
         
         try {
-            await sendMediaBuffer(
-                sessionId, 
-                number, 
-                type, 
-                req.file.buffer, 
-                req.file.mimetype, 
-                caption, 
-                req.file.originalname 
-            );
-            res.json({ success: true, message: 'Arquivo enviado!' });
-        } catch (error: any) {
-            console.error(`[Upload Falha]`, error.message);
-            res.status(500).json({ error: error.message });
-        }
-    });
-});
-
-app.get('/admin/sessions', (req: Request, res: Response) => {
-    const activeSessions = getAllSessions();
-    res.json({ 
-        total: activeSessions.length, 
-        sessions: activeSessions 
+            await sendMediaBuffer(sessionId?.trim(), number, type, req.file.buffer, req.file.mimetype, caption, req.file.originalname);
+            res.json({ success: true });
+        } catch (error: any) { res.status(500).json({ error: error.message }); }
     });
 });
 

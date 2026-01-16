@@ -11,9 +11,44 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 
-// --- PERSISTÊNCIA ---
+// --- SISTEMA DE LOGS GLOBAL (BUFFER) ---
+// Agora guardamos o timestamp bruto e a mensagem separada
+export interface LogItem {
+    timestamp: string;
+    message: string;
+}
+
+export const globalLogs: LogItem[] = [];
+
+// Função que o usuário vê (apenas processamento de fila)
+const addGlobalLog = (msg: string) => {
+    // Salva o momento exato em formato ISO (UTC)
+    // O Frontend converterá isso para o horário do navegador
+    globalLogs.unshift({
+        timestamp: new Date().toISOString(),
+        message: msg
+    }); 
+    if (globalLogs.length > 50) globalLogs.pop(); // Limita a 50 linhas
+};
+
+export let serverInfo: { ip: string; local: string } | null = null;
+const sessions = new Map<string, any>();
 const CONFIG_FILE = path.resolve(process.cwd(), 'sessions_config.json');
 
+const fetchServerInfo = async () => {
+    try {
+        const res = await fetch('http://ip-api.com/json/?fields=query,city,region,status');
+        const data: any = await res.json();
+        if (data.status === 'success') {
+            serverInfo = { ip: data.query, local: `${data.city}/${data.region}` };
+        }
+    } catch (error) {
+        serverInfo = { ip: 'IP Oculto', local: 'Localhost' };
+    }
+};
+fetchServerInfo();
+
+// --- PERSISTÊNCIA ---
 const loadConfig = () => {
     if (fs.existsSync(CONFIG_FILE)) {
         try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { return {}; }
@@ -37,41 +72,26 @@ const removeConfig = (sessionId: string) => {
     }
 };
 
-const sessions = new Map<string, any>();
+// --- LOG INTERNO (FILTRADO) ---
+const logEvent = (tipo: string, session: string, foneDestino: string, msg: string) => {
+    const sessaoData = sessions.get(session);
+    let botNumber = sessaoData?.phoneNumber || '?';
+    
+    // Log Completo no Terminal do Servidor (Node)
+    console.log(`[${tipo}] ${session} | Bot: ${botNumber} -> ${foneDestino}: ${msg}`);
 
-interface SessionData {
-    socket: any;
-    qrCode?: string;
-    pairingCode?: string;
-    status: string;
-    webhookUrl?: string;
-    phoneNumber?: string;
-}
-
-// --- LOGGER BONITO ---
-const logEvent = (tipo: string, session: string, fone: string, msg: string) => {
-    console.log(`\n╭─── [${tipo}] ──────────────────────────────────────`);
-    console.log(`│ 👤 Sessão: ${session}`);
-    console.log(`│ 📱 Fone:   ${fone}`);
-    console.log(`│ 📝 Info:   ${msg}`);
-    console.log(`╰─────────────────────────────────────────────────────\n`);
+    // FILTRO: Só mostra para o usuário logs de ENVIO ou UPLOAD (ignora 'RECEBIDO')
+    if (tipo === 'ENVIO' || tipo === 'UPLOAD' || tipo === 'URL') {
+        addGlobalLog(`📤 Enviando para ${foneDestino}: ${msg}`);
+    }
+    // Se quiser mostrar erros explicitamente
+    if (tipo === 'ERRO') {
+        addGlobalLog(`❌ Erro: ${msg}`);
+    }
 };
 
-// --- FUNÇÃO PARA O DASHBOARD DO ADMIN ---
-export const getAllSessions = () => {
-    const activeSessions: any[] = [];
-    sessions.forEach((value, key) => {
-        activeSessions.push({
-            sessionId: key,
-            status: value.status,
-            phoneNumber: value.phoneNumber || 'Desconhecido',
-            webhookUrl: value.webhookUrl
-        });
-    });
-    return activeSessions;
-};
-
-export const startSession = async (sessionId: string, phoneNumber?: string, webhookUrl?: string): Promise<SessionData> => {
+// --- START SESSION ---
+export const startSession = async (sessionId: string, phoneNumber?: string, webhookUrl?: string): Promise<any> => {
     
     if (!webhookUrl) {
         const saved = loadConfig();
@@ -114,95 +134,35 @@ export const startSession = async (sessionId: string, phoneNumber?: string, webh
             try {
                 const cleanNumber = formatNumberBR(phoneNumber);
                 const code = await sock.requestPairingCode(cleanNumber);
-                console.log(`\n🔐 CÓDIGO DE PAREAMENTO: ${code}\n`);
+                addGlobalLog(`🔐 Código Pareamento: ${code}`);
                 const current = sessions.get(sessionId) || {};
                 sessions.set(sessionId, { ...current, pairingCode: code, status: 'pairing', webhookUrl, phoneNumber });
             } catch (error) { console.error('Erro code:', error); }
         }, 4000);
     }
 
-    // --- ESCUTAR MENSAGENS (ENVIADAS E RECEBIDAS) ---
+    // LISTENER DE MENSAGENS
     sock.ev.on('messages.upsert', async (m) => {
         try {
             const msg = m.messages[0];
             if (!msg.message) return;
 
-            const tipoLog = msg.key.fromMe ? '📤 ENVIADA' : '📥 RECEBIDA';
+            const isFromMe = msg.key.fromMe;
+            const tipoLog = isFromMe ? 'ENVIO' : 'RECEBIDO';
+            
             const texto = msg.message.conversation || 
                           msg.message.extendedTextMessage?.text || 
                           msg.message.imageMessage?.caption || 
-                          (msg.key.fromMe ? '[Mídia Enviada]' : '[Mídia Recebida]');
+                          (isFromMe ? '[Mídia]' : '[Mídia]');
             
-            const remetente = msg.pushName || 'Desconhecido';
-            const telefone = msg.key.remoteJid?.split('@')[0];
+            const telefoneRemoto = msg.key.remoteJid?.split('@')[0] || 'Desconhecido';
 
-            logEvent(tipoLog, sessionId, `${remetente} (${telefone})`, texto);
+            logEvent(tipoLog, sessionId, telefoneRemoto, texto.substring(0, 30));
 
-            if (!msg.key.fromMe) {
-                let targetUrl = webhookUrl;
-                if (!targetUrl) {
-                    const saved = loadConfig();
-                    targetUrl = saved[sessionId]?.webhookUrl;
-                }
-
-                if (targetUrl) {
-                    const payload = {
-                        event: 'message.received',
-                        session: sessionId,
-                        phone: telefone,
-                        name: remetente,
-                        message: texto,
-                        id: msg.key.id,
-                        timestamp: new Date().toISOString()
-                    };
-                    fetch(targetUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    }).catch(() => {});
-                }
-            }
         } catch (error) { console.error("Erro msg:", error); }
     });
 
-    // --- ATUALIZAÇÃO DE STATUS ---
-    sock.ev.on('messages.update', async (updates) => {
-        for (const update of updates) {
-            if (update.update.status) {
-                let statusText = '';
-                if (update.update.status === 3) statusText = 'delivered';
-                if (update.update.status === 4) statusText = 'read';
-                if (update.update.status === 5) statusText = 'played';
-
-                if (statusText) {
-                    const fone = update.key.remoteJid?.split('@')[0];
-                    console.log(`👀 STATUS: ${statusText.toUpperCase()} -> Para: ${fone}`);
-
-                    let targetUrl = webhookUrl;
-                    if (!targetUrl) {
-                        const saved = loadConfig();
-                        targetUrl = saved[sessionId]?.webhookUrl;
-                    }
-
-                    if (targetUrl) {
-                        fetch(targetUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                event: 'message.status',
-                                session: sessionId,
-                                id: update.key.id,
-                                status: statusText,
-                                phone: fone,
-                                timestamp: new Date().toISOString()
-                            })
-                        }).catch(() => {});
-                    }
-                }
-            }
-        }
-    });
-
+    // STATUS CONEXÃO
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
@@ -215,21 +175,31 @@ export const startSession = async (sessionId: string, phoneNumber?: string, webh
             const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             
-            console.log(`[Status] Queda (${statusCode}). Reconectando...`);
-
             if (shouldReconnect) {
                 const current = sessions.get(sessionId) || {};
                 sessions.set(sessionId, { ...current, status: 'reconnecting' });
+                addGlobalLog(`Reconectando sessão...`);
                 setTimeout(() => { startSession(sessionId, undefined, webhookUrl); }, 3000);
             } else {
                 if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
                 removeConfig(sessionId);
                 sessions.delete(sessionId);
+                addGlobalLog(`Sessão desconectada.`);
             }
-        } else if (connection === 'open') {
-            console.log(`\n✅ [CONECTADO] Sessão: ${sessionId}\n`);
+        } 
+        else if (connection === 'open') {
+            const botId = sock.user?.id?.split(':')[0]?.split('@')[0] || '';
             const current = sessions.get(sessionId) || {};
-            sessions.set(sessionId, { ...current, socket: sock, status: 'connected', webhookUrl });
+            
+            sessions.set(sessionId, { 
+                ...current, 
+                socket: sock, 
+                status: 'connected', 
+                webhookUrl,
+                phoneNumber: botId 
+            });
+
+            addGlobalLog(`✅ Bot Conectado: ${botId}`);
         }
     });
 
@@ -253,25 +223,20 @@ export const deleteSession = (sessionId: string) => {
     return true;
 };
 
+// HELPERS DE ENVIO
 export const sendMediaBuffer = async (sessionId: string, number: string, type: 'image' | 'video' | 'document', buffer: Buffer, mimetype: string, caption?: string, fileName?: string) => {
     const session = sessions.get(sessionId);
-    if (!session) throw new Error(`Sessão não encontrada.`);
-    
-    // Pequeno delay se estiver reconectando
-    if (session.status === 'reconnecting') await new Promise(r => setTimeout(r, 2000));
-    
-    if (session.status !== 'connected' && session.status !== 'reconnecting') throw new Error(`Sessão instável.`);
+    if (!session || session.status !== 'connected') throw new Error(`Sessão offline.`);
 
-    const formattedNumber = formatNumberBR(number);
-    const jid = `${formattedNumber}@s.whatsapp.net`;
-
+    const jid = `${formatNumberBR(number)}@s.whatsapp.net`;
     let messagePayload: any = {};
     if (type === 'image') messagePayload = { image: buffer, caption, mimetype };
     else if (type === 'video') messagePayload = { video: buffer, caption, mimetype };
     else if (type === 'document') messagePayload = { document: buffer, mimetype, fileName: fileName || 'file', caption };
 
-    logEvent('📤 UPLOAD', sessionId, formattedNumber, `Arquivo: ${type}`);
-
+    // Log para o usuário
+    logEvent('UPLOAD', sessionId, formatNumberBR(number), `Arquivo: ${type}`);
+    
     return await session.socket.sendMessage(jid, messagePayload);
 };
 
@@ -282,16 +247,29 @@ export const sendMedia = async (sessionId: string, number: string, type: 'image'
     let msg: any = {};
     if (type === 'image') msg = { image: { url }, caption };
     else if (type === 'video') msg = { video: { url }, caption };
-    else if (type === 'document') msg = { document: { url }, mimetype: getMimeType(url), fileName, caption };
+    else if (type === 'document') msg = { document: { url }, mimetype: 'application/octet-stream', fileName, caption };
+    
+    // Log para o usuário
+    logEvent('URL', sessionId, formatNumberBR(number), `Mídia URL`);
+    
     return await session.socket.sendMessage(jid, msg);
 };
 
-function getMimeType(url: string): string {
-    if (url.endsWith('.pdf')) return 'application/pdf';
-    return 'application/octet-stream';
-}
+export const getAllSessions = () => {
+    const activeSessions: any[] = [];
+    sessions.forEach((value, key) => {
+        activeSessions.push({
+            sessionId: key,
+            status: value.status,
+            phoneNumber: value.phoneNumber || '',
+            webhookUrl: value.webhookUrl
+        });
+    });
+    return activeSessions;
+};
 
 export const formatNumberBR = (number: string): string => {
+    if(!number) return '';
     let clean = number.replace(/[^0-9]/g, '');
     if (clean.startsWith('55') && clean.length === 13 && clean[4] === '9') {
         return clean.substring(0, 4) + clean.substring(5);
