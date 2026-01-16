@@ -55,14 +55,16 @@
                 <span class="status-dot dot-red" id="dotStatus"></span>
                 <span id="txtStatus" class="fw-bold">DESCONECTADO</span>
             </div>
+            
             <div class="info-box d-none" id="serverDetails">
                 <div class="row g-2">
-                    <div class="col-12">
+                    <div class="col-12 text-center">
                         <span class="info-label">BOT CONECTADO</span>
                         <span class="info-val text-success" id="lblBotPhone">...</span>
                     </div>
                 </div>
             </div>
+
             <div class="d-grid gap-2">
                 <button onclick="conectar()" id="btnConnect" class="btn btn-primary-custom btn-sm">CONECTAR</button>
                 <button onclick="desconectar()" id="btnDisconnect" class="btn btn-outline-danger btn-sm d-none">DESCONECTAR</button>
@@ -421,7 +423,7 @@
                     document.getElementById('qrArea').classList.add('d-none'); document.getElementById('btnConnect').classList.add('d-none');
                     document.getElementById('btnDisconnect').classList.remove('d-none'); document.getElementById('serverDetails').classList.remove('d-none');
                     if(d.phoneNumber) document.getElementById('lblBotPhone').innerText = d.phoneNumber;
-                    if(d.serverInfo) document.getElementById('lblServerInfo').innerText = `${d.serverInfo.ip} (${d.serverInfo.local})`;
+                    // REMOVIDO: Linha que atualizava o IP/Local
                 } else if (d.qrCode) {
                     dot.className = 'status-dot dot-red'; txt.innerText = 'AGUARDANDO LEITURA'; txt.className = 'fw-bold text-white';
                     document.getElementById('qrArea').classList.remove('d-none');
@@ -440,7 +442,6 @@
                 if(d.logs) {
                     const term = document.getElementById('terminal');
                     term.innerHTML = d.logs.map(l => {
-                        // CONVERSÃO MÁGICA DE HORA
                         const horaLocal = new Date(l.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                         return `<span class="log-line"><span style="color:#666">[${horaLocal}]</span> ${l.message}</span>`;
                     }).join('');
