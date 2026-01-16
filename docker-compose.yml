@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: dispia-backend
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      - PORT=3000
+    networks:
+      - dispia-net
+
+  frontend:
+    build: ./dispia-frontend
+    container_name: dispia-frontend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./dispia-frontend:/app
+      - /app/node_modules
+    environment:
+      - PORT=3001
+      # No Docker, o frontend (browser) acessa via localhost da máquina hospedeira
+      - NEXT_PUBLIC_API_URL=http://localhost:3000 
+    networks:
+      - dispia-net
+    depends_on:
+      - backend
+
+networks:
+  dispia-net:
+    driver: bridge

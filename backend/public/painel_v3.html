@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DispIA - Dashboard Black</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        /* FORÇAR MODO DARK DE ALTO CONTRASTE */
+        body {
+            background-color: #000000 !important;
+            color: #ffffff !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* Cards */
+        .card {
+            background-color: #111111;
+            border: 1px solid #333;
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+        }
+        .card-header {
+            background-color: #1a1a1a;
+            border-bottom: 1px solid #333;
+            color: #fff;
+        }
+
+        /* Inputs e Textareas - Correção de legibilidade */
+        .form-control, .form-select {
+            background-color: #222 !important;
+            border: 1px solid #444 !important;
+            color: #fff !important;
+        }
+        .form-control:focus {
+            background-color: #222 !important;
+            color: #fff !important;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25);
+        }
+        /* Placeholder mais claro */
+        ::placeholder { color: #888 !important; opacity: 1; }
+
+        /* Botões */
+        .btn-primary {
+            background-color: #6d28d9;
+            border-color: #6d28d9;
+        }
+        .btn-primary:hover { background-color: #5b21b6; }
+        
+        /* Console de Logs */
+        .console-box {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            color: #0f0;
+            font-family: monospace;
+            height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            font-size: 12px;
+        }
+        
+        /* Utilitários */
+        .hidden { display: none !important; }
+        .text-accent { color: #a78bfa; }
+        
+        /* Footer */
+        footer {
+            margin-top: 40px;
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #222;
+            color: #555;
+        }
+    </style>
+</head>
+<body class="py-4">
+
+<div class="container">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="fa-brands fa-whatsapp text-success"></i> Disp<span class="text-accent">IA</span></h2>
+        <div>
+            <span class="badge bg-secondary" id="statusBadge">DESCONECTADO</span>
+            <small class="d-block text-end text-muted" style="font-size: 10px;" id="sessionIdDisplay">Carregando ID...</small>
+        </div>
+    </div>
+
+    <input type="hidden" id="sessionId">
+    <input type="hidden" id="webhookUrl" value="http://localhost:3000/webhook/test">
+
+    <div class="row">
+        <div class="col-md-4">
+            
+            <div class="card mb-4">
+                <div class="card-header fw-bold">1. Conexão</div>
+                <div class="card-body text-center">
+                    
+                    <div id="connectBtnArea">
+                        <button onclick="conectar()" id="btnConnect" class="btn btn-primary w-100 btn-lg">
+                            <i class="fa-solid fa-power-off"></i> CONECTAR SESSÃO
+                        </button>
+                    </div>
+
+                    <div id="qrCodeArea" class="hidden mt-3">
+                        <div class="alert alert-info py-1 mb-2">Escaneie o QR Code abaixo:</div>
+                        <div id="qrcode" class="d-flex justify-content-center bg-white p-2 rounded mb-2"></div>
+                    </div>
+
+                    <div id="disconnectArea" class="hidden mt-3">
+                        <div class="alert alert-success py-1"><i class="fa-solid fa-check"></i> Sessão Ativa</div>
+                        <button onclick="desconectar()" class="btn btn-outline-danger w-100 btn-sm">Desconectar</button>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header fw-bold">2. Anti-Ban (Delay)</div>
+                <div class="card-body">
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark text-white border-secondary">Min (s)</span>
+                        <input type="number" id="minDelay" class="form-control" value="10">
+                        <span class="input-group-text bg-dark text-white border-secondary">Max (s)</span>
+                        <input type="number" id="maxDelay" class="form-control" value="30">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header fw-bold">3. Configurar Disparo</div>
+                <div class="card-body">
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-accent">Mensagem:</label>
+                        <textarea id="messageText" class="form-control" rows="4" placeholder="Digite sua mensagem..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-accent"><i class="fa-solid fa-paperclip"></i> Anexo (Opcional):</label>
+                        <input type="file" id="mediaInput" class="form-control">
+                    </div>
+
+                    <div class="mb-3 p-3 border border-secondary rounded bg-dark">
+                        <label class="form-label text-warning mb-0"><i class="fa-solid fa-file-excel"></i> Importar Excel (.xlsx)</label>
+                        <input type="file" id="excelInput" class="form-control mt-2" onchange="lerExcel()">
+                        <small id="fileStatus" class="text-muted d-block mt-1">Nenhum arquivo selecionado</small>
+                    </div>
+
+                    <button onclick="iniciarCampanha()" id="btnSend" class="btn btn-success w-100 py-3 fw-bold fs-5" disabled>
+                        <i class="fa-solid fa-rocket"></i> INICIAR CAMPANHA EM LOTE
+                    </button>
+
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Log de Envios</span>
+                    <span id="progressCount" class="badge bg-dark">0/0</span>
+                </div>
+                <div id="consoleLog" class="console-box">
+                    <div>> Aguardando comando...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Desenvolvido por <strong>The Biazolli Company</strong> &copy; 2026
+    </footer>
+
+</div>
+
+<script>
+    // --- 1. GERAÇÃO DE SESSÃO AUTOMÁTICA ---
+    const sessionKey = 'dispia_session_v1';
+    let mySessionId = localStorage.getItem(sessionKey);
+    
+    if (!mySessionId) {
+        mySessionId = 'sessao_' + Math.floor(Math.random() * 99999);
+        localStorage.setItem(sessionKey, mySessionId);
+    }
+    
+    document.getElementById('sessionId').value = mySessionId;
+    document.getElementById('sessionIdDisplay').innerText = 'ID: ' + mySessionId;
+
+    // Variáveis Globais
+    let contacts = [];
+    let isRunning = false;
+
+    // --- 2. FUNÇÕES DE LOG (Console na tela) ---
+    function log(msg, type = 'info') {
+        const consoleDiv = document.getElementById('consoleLog');
+        const color = type === 'error' ? 'red' : (type === 'success' ? '#0f0' : '#ccc');
+        const time = new Date().toLocaleTimeString();
+        consoleDiv.innerHTML = `<div style="color:${color}">[${time}] ${msg}</div>` + consoleDiv.innerHTML;
+    }
+
+    // --- 3. CONEXÃO COM BACKEND ---
+    async function conectar() {
+        const btn = document.getElementById('btnConnect');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Solicitando...';
+
+        const sessionId = document.getElementById('sessionId').value;
+        const webhook = document.getElementById('webhookUrl').value;
+
+        log(`Iniciando conexão para sessão: ${sessionId}...`);
+
+        try {
+            // Chama a rota de start
+            const res = await fetch('/session/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: sessionId, webhookUrl: webhook })
+            });
+
+            const data = await res.json();
+            log('Resposta do servidor: ' + JSON.stringify(data));
+
+            // Inicia loop de verificação
+            checkStatus();
+
+        } catch (error) {
+            console.error(error);
+            log('ERRO AO CONECTAR: ' + error.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-power-off"></i> TENTAR NOVAMENTE';
+        }
+    }
+
+    async function checkStatus() {
+        const sessionId = document.getElementById('sessionId').value;
+        const qrDiv = document.getElementById('qrcode');
+        const qrArea = document.getElementById('qrCodeArea');
+        const btnArea = document.getElementById('connectBtnArea');
+        const discArea = document.getElementById('disconnectArea');
+        const statusBadge = document.getElementById('statusBadge');
+
+        log('Verificando status...');
+
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`/session/status?sessionId=${sessionId}`);
+                const data = await res.json();
+
+                if (data.status === 'connected') {
+                    clearInterval(interval);
+                    qrArea.classList.add('hidden');
+                    btnArea.classList.add('hidden');
+                    discArea.classList.remove('hidden');
+                    statusBadge.innerText = 'CONECTADO 🟢';
+                    statusBadge.className = 'badge bg-success';
+                    log('WhatsApp CONECTADO com sucesso!', 'success');
+                } 
+                else if (data.qrCode) {
+                    btnArea.classList.add('hidden');
+                    qrArea.classList.remove('hidden');
+                    statusBadge.innerText = 'LENDO QR 🟡';
+                    statusBadge.className = 'badge bg-warning text-dark';
+                    
+                    // Renderiza QR Code se mudou
+                    if (qrDiv.innerHTML === '') {
+                        new QRCode(qrDiv, { text: data.qrCode, width: 180, height: 180 });
+                        log('QR Code recebido. Escaneie agora.');
+                    }
+                }
+            } catch (err) {
+                // Backend pode estar reiniciando
+                console.log('Tentando reconectar status...', err);
+            }
+        }, 3000); // Verifica a cada 3 segundos
+    }
+
+    async function desconectar() {
+        if(!confirm('Tem certeza?')) return;
+        const sessionId = document.getElementById('sessionId').value;
+        await fetch('/session/logout', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ sessionId })
+        });
+        location.reload();
+    }
+
+    // --- 4. EXCEL ---
+    function lerExcel() {
+        const input = document.getElementById('excelInput');
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheet];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            contacts = [];
+            // Varre linhas procurando números
+            jsonData.forEach(row => {
+                row.forEach(cell => {
+                    if (cell) {
+                        let clean = cell.toString().replace(/\D/g, '');
+                        // Lógica simples: se tem mais de 10 digitos, é potencial numero
+                        if (clean.length >= 10) {
+                            if (clean.length <= 11) clean = '55' + clean; // Add DDI BR
+                            contacts.push(clean);
+                        }
+                    }
+                });
+            });
+
+            // Remove duplicados
+            contacts = [...new Set(contacts)];
+
+            document.getElementById('fileStatus').innerText = `${contacts.length} números carregados prontos para envio.`;
+            document.getElementById('fileStatus').className = 'text-success fw-bold d-block mt-1';
+            
+            if(contacts.length > 0) document.getElementById('btnSend').disabled = false;
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // --- 5. DISPARO ---
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    async function iniciarCampanha() {
+        const message = document.getElementById('messageText').value;
+        const media = document.getElementById('mediaInput').files[0];
+        
+        if (!message && !media) return alert('Escreva uma mensagem ou anexe um arquivo.');
+        if (contacts.length === 0) return alert('Nenhum contato carregado.');
+
+        isRunning = true;
+        const btn = document.getElementById('btnSend');
+        btn.disabled = true;
+        btn.innerText = 'ENVIANDO...';
+
+        const sessionId = document.getElementById('sessionId').value;
+        const minDelay = parseInt(document.getElementById('minDelay').value);
+        const maxDelay = parseInt(document.getElementById('maxDelay').value);
+
+        log('🚀 CAMPANHA INICIADA', 'success');
+
+        for (let i = 0; i < contacts.length; i++) {
+            const phone = contacts[i];
+            const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay) * 1000;
+
+            document.getElementById('progressCount').innerText = `${i+1}/${contacts.length}`;
+            log(`Enviando para ${phone}...`);
+
+            try {
+                // Se tem arquivo, usa rota upload, senão rota texto
+                let response;
+                if (media) {
+                    const formData = new FormData();
+                    formData.append('sessionId', sessionId);
+                    formData.append('number', phone);
+                    formData.append('caption', message); // Texto vira legenda
+                    
+                    // Define tipo bruto
+                    let type = 'document';
+                    if(media.type.includes('image')) type = 'image';
+                    if(media.type.includes('video')) type = 'video';
+                    formData.append('type', type);
+                    formData.append('file', media);
+
+                    response = await fetch('/message/upload', { method: 'POST', body: formData });
+                } else {
+                    response = await fetch('/message/text', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ sessionId, number: phone, message })
+                    });
+                }
+
+                if (response.ok) {
+                    log(`✅ ${phone}: Sucesso`);
+                } else {
+                    log(`❌ ${phone}: Falha`, 'error');
+                }
+
+            } catch (err) {
+                log(`❌ Erro no envio: ${err.message}`, 'error');
+            }
+
+            if (i < contacts.length - 1) {
+                log(`⏳ Aguardando ${delay/1000}s...`);
+                await sleep(delay);
+            }
+        }
+
+        log('🏁 CAMPANHA FINALIZADA', 'success');
+        btn.disabled = false;
+        btn.innerText = 'INICIAR NOVA CAMPANHA';
+        alert('Disparos concluídos!');
+    }
+    
+    // Auto-check ao carregar
+    checkStatus();
+
+</script>
+</body>
+</html>
