@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from "react-qr-code";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = '/api/interno';
 
 export default function StatusConexao({ sessionId, onConnect }) {
     const [status, setStatus] = useState('checking'); // checking, disconnected, qrcode, connected
@@ -92,7 +92,7 @@ export default function StatusConexao({ sessionId, onConnect }) {
         return (
             <div className="bg-dispia-card border border-gray-800 p-8 rounded-xl text-center mb-6 flex flex-col items-center animate-fade-in">
                 <h3 className="text-xl font-bold text-white mb-2">Escaneie o QR Code</h3>
-                <p className="text-gray-400 text-sm mb-6">Abra o WhatsApp no seu celular > Configurações > Aparelhos conectados</p>
+                <p className="text-gray-400 text-sm mb-6">Abra o WhatsApp no seu celular &gt; Configurações &gt; Aparelhos conectados</p>
                 
                 <div className="bg-white p-4 rounded-lg shadow-lg">
                     <QRCode value={qrCode} size={200} />

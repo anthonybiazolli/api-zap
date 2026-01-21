@@ -4,10 +4,10 @@ import { analyzeRisk } from '../utils/dispiaIntelligence';
 import { jsPDF } from "jspdf";
 
 // Configura a URL da API
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = '/api/interno';
 
 export default function Disparador({ userId }) {
-    const [apiUrl, setApiUrl] = useState('http://localhost:3000');
+    const [apiUrl, setApiUrl] = useState('/api/interno');
     const [message, setMessage] = useState('');
     const [contacts, setContacts] = useState([]);
     const [manualNumber, setManualNumber] = useState('');
@@ -23,7 +23,7 @@ export default function Disparador({ userId }) {
         if (typeof window !== 'undefined') {
             const currentUrl = window.location.origin;
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                setApiUrl('http://localhost:3000');
+                setApiUrl('https://shiny-spoon-5vxpjvqxrx9c4qp-3000.app.github.dev');
             } else {
                 const newUrl = currentUrl.replace('3001', '3000');
                 setApiUrl(newUrl);

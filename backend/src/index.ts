@@ -4,6 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import cors from 'cors';
+import { routes } from './routes';
+import { CampaignDispatcher } from './services/CampaignDispatcher'; // Importa o Motor
 
 const app = express();
 app.use(cors());
@@ -14,6 +16,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const publicPath = path.resolve(__dirname, '../public');
 app.use(express.static(publicPath));
 
+// === ROTAS DO SISTEMA (EMPRESA, PESSOA, CAMPANHA) ===
+app.use('/api', routes);
+
 app.get('/', (req: Request, res: Response) => {
     const painelV3 = path.join(publicPath, 'painel_v3.html');
     res.sendFile(fs.existsSync(painelV3) ? painelV3 : path.join(publicPath, 'index.html'));
@@ -21,8 +26,9 @@ app.get('/', (req: Request, res: Response) => {
 
 const PORT = Number(process.env.PORT) || 3000;
 
-// === ROTAS ===
-app.post('/session/start', async (req: Request, res: Response) => {
+// === ROTAS DO WHATSAPP ===
+
+app.post('/api/session/start', async (req: Request, res: Response) => {
     let { sessionId, phoneNumber, webhookUrl } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId obrigatório' });
     sessionId = sessionId.trim();
@@ -35,7 +41,7 @@ app.post('/session/start', async (req: Request, res: Response) => {
     }, 4000); 
 });
 
-app.get('/session/status', (req: Request, res: Response) => {
+app.get('/api/session/status', (req: Request, res: Response) => {
     const sessionId = (req.query.sessionId as string)?.trim();
     if (!sessionId) return res.status(400).json({ error: 'ID obrigatório' });
     const session = getSession(sessionId);
@@ -43,16 +49,16 @@ app.get('/session/status', (req: Request, res: Response) => {
     res.json({ status: session.status, qrCode: session.qrCode, pairingCode: session.pairingCode, phoneNumber: session.phoneNumber, serverInfo: serverInfo });
 });
 
-app.post('/session/logout', (req: Request, res: Response) => {
+app.post('/api/session/logout', (req: Request, res: Response) => {
     deleteSession(req.body.sessionId?.trim());
     res.json({ message: `Sessão removida.` });
 });
 
 // LOGS & STATS
-app.get('/admin/logs', (req: Request, res: Response) => { res.json({ logs: globalLogs }); });
-app.get('/admin/stats', (req: Request, res: Response) => { res.json(sessionStats); });
+app.get('/api/admin/logs', (req: Request, res: Response) => { res.json({ logs: globalLogs }); });
+app.get('/api/admin/stats', (req: Request, res: Response) => { res.json(sessionStats); });
 
-app.post('/message/text', async (req: Request, res: Response) => {
+app.post('/api/message/text', async (req: Request, res: Response) => {
     let { sessionId, number, message } = req.body;
     if(!sessionId) return res.status(400).json({error: 'Sem ID'});
     const session = getSession(sessionId.trim());
@@ -64,7 +70,7 @@ app.post('/message/text', async (req: Request, res: Response) => {
     } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
-app.post('/message/upload', (req: any, res: any) => {
+app.post('/api/message/upload', (req: any, res: any) => {
     upload.single('file')(req, res, async (err: any) => {
         if (err) return res.status(500).json({ error: err.message });
         let { sessionId, number, type, caption } = req.body;
@@ -76,5 +82,12 @@ app.post('/message/upload', (req: any, res: any) => {
     });
 });
 
-app.post('/webhook/test', (req, res) => { res.status(200).send('OK'); });
+app.post('/api/webhook/test', (req, res) => { res.status(200).send('OK'); });
+
+// === INICIALIZAÇÃO ===
+
+// 1. Inicia o Motor de Campanhas (Dispatcher)
+CampaignDispatcher.startLoop();
+
+// 2. Inicia o Servidor Express
 app.listen(PORT, '0.0.0.0', () => { console.log(`\n🚀 DispIA Backend rodando na porta ${PORT}\n`); });

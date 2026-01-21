@@ -12,8 +12,11 @@ services:
       - /app/node_modules
     environment:
       - PORT=3000
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/dispia_crm?schema=public
     networks:
       - dispia-net
+    depends_on:
+      - db
 
   frontend:
     build: ./dispia-frontend
@@ -25,13 +28,30 @@ services:
       - /app/node_modules
     environment:
       - PORT=3001
-      # No Docker, o frontend (browser) acessa via localhost da máquina hospedeira
       - NEXT_PUBLIC_API_URL=http://localhost:3000 
     networks:
       - dispia-net
     depends_on:
       - backend
 
+  db:
+    image: postgres:15-alpine
+    container_name: dispia-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dispia_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dispia-net
+
 networks:
   dispia-net:
     driver: bridge
+
+volumes:
+  postgres_data:
