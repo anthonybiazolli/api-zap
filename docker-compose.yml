@@ -12,7 +12,9 @@ services:
       - /app/node_modules
     environment:
       - PORT=3000
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/dispia_crm?schema=public
+      # O Docker vai ler as senhas do arquivo .env automaticamente
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - dispia-net
     depends_on:
@@ -21,6 +23,7 @@ services:
   frontend:
     build: ./dispia-frontend
     container_name: dispia-frontend
+    restart: always
     ports:
       - "3001:3001"
     volumes:
@@ -28,7 +31,7 @@ services:
       - /app/node_modules
     environment:
       - PORT=3001
-      - NEXT_PUBLIC_API_URL=http://localhost:3000 
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     networks:
       - dispia-net
     depends_on:
@@ -39,13 +42,26 @@ services:
     container_name: dispia-db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: dispia_crm
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dispia-net
+
+  nginx-proxy:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: always
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
     networks:
       - dispia-net
 
