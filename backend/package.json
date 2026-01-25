@@ -4,7 +4,7 @@
   "description": "Backend DispIA",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "npx prisma generate && nodemon --exec ts-node src/index.ts",
+    "dev": "npx prisma generate && nodemon --watch src --ignore sessions --ignore auth_info_baileys --ignore uploads --ignore google_credentials.json --ext ts,js,json --exec ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
@@ -26,6 +26,7 @@
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "googleapis": "^170.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1",
     "pino": "^8.19.0",

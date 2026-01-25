@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import { getSession } from '../wabot';
+import { GoogleDriveService } from './GoogleDriveService';
 
 const prisma = new PrismaClient();
+
+// Função de delay para evitar bloqueio e banimento (Humanização)
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export class CampaignDispatcher {
     private static isRunning = false;
@@ -9,152 +13,170 @@ export class CampaignDispatcher {
     static startLoop() {
         if (this.isRunning) return;
         this.isRunning = true;
-        console.log("🚀 Motor de Campanhas V4 (Com Agendamento) Iniciado...");
-        // Intervalo de 40s
-        setInterval(() => this.processarCampanhas(), 40000); 
+        console.log("🚀 Motor de Campanhas V13 (Auto-Remove Digito 9) Iniciado...");
+        
+        // Intervalo entre ciclos de processamento (15 segundos)
+        setInterval(() => this.processarCampanhas(), 15000); 
     }
 
     private static async processarCampanhas() {
-        const now = new Date();
-        const diaSemana = now.getDay();
-        const horaAtual = now.getHours() * 60 + now.getMinutes();
+        try {
+            const campanhas = await prisma.campanha.findMany({ where: { status: 'RODANDO' } });
 
-        // Busca apenas campanhas ativas
-        const campanhas = await prisma.campanha.findMany({ where: { status: 'RODANDO' } });
-
-        for (const camp of campanhas) {
-            
-            // === 1. VERIFICAÇÃO DE AGENDAMENTO ===
-            if (camp.tipoEnvio === 'AGENDADO' && camp.dataAgendamento) {
-                // Se a data atual for MENOR que a data agendada, ainda não é hora
-                if (now < camp.dataAgendamento) {
-                    continue; 
-                }
-                // Se chegou a hora (now >= dataAgendamento), o fluxo segue para o envio
-            
-            } else {
-                // === 2. VERIFICAÇÃO DE RECORRÊNCIA (IMEDIATO) ===
-                // Verifica Dias da Semana
-                const diasOk = JSON.parse(camp.diasSemana);
-                if (!diasOk.includes(diaSemana)) continue;
-
-                // Verifica Horário Comercial
-                const [hI, mI] = camp.horaInicio.split(':').map(Number);
-                const [hF, mF] = camp.horaFim.split(':').map(Number);
-                const inicio = hI * 60 + mI;
-                const fim = hF * 60 + mF;
-                
-                if (horaAtual < inicio || horaAtual > fim) continue;
+            // Diagnóstico rápido
+            const sessoesGlobais = (global as any).sessions || new Map();
+            const idsNaMemoria = Array.from(sessoesGlobais.keys());
+            if (campanhas.length > 0) {
+                 const conectadas = idsNaMemoria.filter((id: any) => sessoesGlobais.get(id)?.status === 'connected');
+                 console.log(`[DEBUG] Campanhas: ${campanhas.length} | Sessões ON: [${conectadas.join(', ')}]`);
             }
 
-            // === 3. VALIDAÇÃO DE LIMITE DIÁRIO ===
-            const hoje = new Date(); hoje.setHours(0,0,0,0);
-            const enviosHoje = await prisma.mensagemLog.count({
-                where: { campanhaId: camp.id, dataEnvio: { gte: hoje } }
-            });
-            
-            if (enviosHoje >= camp.limiteDiario) continue;
+            for (const camp of campanhas) {
+                // Checagens básicas
+                const hoje = new Date(); hoje.setHours(0,0,0,0);
+                const enviosHoje = await prisma.mensagemLog.count({ where: { campanhaId: camp.id, dataEnvio: { gte: hoje } } });
+                if(enviosHoje >= camp.limiteDiario) continue;
 
-            // === 4. EXECUÇÃO DO DISPARO ===
-            await this.executarDisparo(camp);
-        }
+                // Seleção de Sessão
+                let session = null;
+                let sessionIdUsado = '';
+
+                if (camp.instanceId && sessoesGlobais.has(camp.instanceId)) {
+                    const s = sessoesGlobais.get(camp.instanceId);
+                    if (s.status === 'connected') { session = s; sessionIdUsado = camp.instanceId; }
+                }
+                
+                if (!session) {
+                    for (const [key, val] of sessoesGlobais.entries()) {
+                        if (val.status === 'connected') { session = val; sessionIdUsado = key; break; }
+                    }
+                }
+
+                if (!session) continue;
+
+                await this.executarDisparo(camp, session, sessionIdUsado);
+            }
+        } catch (e) { console.error("Erro loop:", e); }
     }
 
-    private static async executarDisparo(camp: any) {
+    private static async executarDisparo(camp: any, session: any, sessionId: string) {
         let enviou = false;
 
-        // A) Alvos Específicos (Manual ou Excel)
+        // Lógica de Alvos Manuais
         if (camp.alvosManuais) {
-            const lista = JSON.parse(camp.alvosManuais) as string[];
+            let lista: string[] = [];
+            try { lista = JSON.parse(camp.alvosManuais); } catch (e) { lista = []; }
             for (const num of lista) {
-                // Normaliza para verificar no banco (evita erro de duplicidade com 55)
-                const numBusca = num.length > 8 ? num.slice(-8) : num;
+                // Remove tudo que não é dígito para busca
+                const numLimpo = num.replace(/\D/g, '');
+                // Busca pelos últimos 8 dígitos para garantir que ache mesmo se salvou com/sem 9
+                const buscaFlexivel = numLimpo.slice(-8);
                 
-                const jaFoi = await prisma.mensagemLog.findFirst({
-                    where: { campanhaId: camp.id, destinatario: { contains: numBusca } }
-                });
-
+                const jaFoi = await prisma.mensagemLog.findFirst({ where: { campanhaId: camp.id, destinatario: { contains: buscaFlexivel } } });
                 if (!jaFoi) {
-                    await this.enviar(camp, num, 'Visitante');
+                    await this.enviarPacote(camp, num, 'Visitante', session, sessionId);
                     enviou = true;
-                    break; // Envia apenas 1 por ciclo do loop principal
+                    break; 
                 }
             }
         }
 
-        // B) Base de Dados (Se não enviou manual neste ciclo)
+        // Lógica de Banco de Dados
         if (!enviou) {
-            const ddds = JSON.parse(camp.dddsAlvo) as string[];
-            
-            if (ddds.length > 0) {
-                // Pega aleatório para não travar sempre nos primeiros registros
-                const total = await prisma.empresa.count();
-                const skip = Math.floor(Math.random() * (total > 50 ? total - 50 : 0));
-                
-                const candidatos = await prisma.empresa.findMany({ take: 50, skip });
-                
-                for (const alvo of candidatos) {
-                    if(!alvo.telefone) continue;
-                    const fone = alvo.telefone.replace(/\D/g, '');
-                    if(fone.length < 10) continue;
+            try {
+                const ddds = JSON.parse(camp.dddsAlvo || '[]');
+                if (ddds.length > 0) {
+                    const total = await prisma.empresa.count();
+                    const skip = Math.floor(Math.random() * (total > 50 ? total - 50 : 0));
+                    const batch = await prisma.empresa.findMany({ take: 50, skip, select: { telefone: true, nomeFantasia: true } });
 
-                    // Verifica se o DDD bate
-                    if(ddds.includes(fone.substring(0, 2))) {
-                        const jaFoi = await prisma.mensagemLog.findFirst({
-                            where: { campanhaId: camp.id, destinatario: { contains: fone.slice(-8) } }
-                        });
+                    for (const empresa of batch) {
+                        if (!empresa.telefone) continue;
+                        const foneLimpo = empresa.telefone.replace(/\D/g, '');
+                        if (foneLimpo.length < 10) continue;
                         
-                        if (!jaFoi) {
-                            await this.enviar(camp, fone, alvo.razaoSocial);
+                        // Verifica se já enviou
+                        const jaFoi = await prisma.mensagemLog.findFirst({ where: { campanhaId: camp.id, destinatario: { contains: foneLimpo.slice(-8) } } });
+                        if (!jaFoi && ddds.includes(foneLimpo.substring(0, 2))) {
+                            await this.enviarPacote(camp, foneLimpo, empresa.nomeFantasia || 'Cliente', session, sessionId);
+                            enviou = true;
                             break;
                         }
                     }
                 }
-            }
+            } catch (e) { console.error("Erro DB:", e); }
         }
     }
 
-    private static async enviar(camp: any, numero: string, nome: string) {
-        // Tenta pegar a instância específica da campanha (SaaS), senão pega qualquer uma disponível (Fallback)
-        let session = null;
-        
-        if (camp.instanceId) {
-            session = getSession(camp.instanceId);
-        } else {
-            // === CORREÇÃO AQUI ===
-            // Usamos (global as any) para evitar o erro TS7017
-            const allSessions = (global as any).sessions || {};
-            const firstId = Object.keys(allSessions)[0];
-            if (firstId) session = getSession(firstId);
-        }
-        
-        if (session && session.status === 'connected') {
-            try {
-                // CORREÇÃO DO 55 (Formato Internacional)
-                let final = numero.replace(/\D/g, '');
-                // Se tem 10 ou 11 digitos (ex: 1199998888), adiciona 55. Se tem 12 ou 13, assume que já tem DDI.
-                if (final.length >= 10 && final.length <= 11) final = '55' + final;
+    private static async enviarPacote(camp: any, numero: string, nomeCliente: string, session: any, sessionId: string) {
+        try {
+            // === HIGIENIZAÇÃO DE NÚMERO (BRASIL) ===
+            let final = numero.replace(/\D/g, ''); // Remove traços, parenteses, etc
 
-                const jid = `${final}@s.whatsapp.net`;
-                const msg = camp.mensagem.replace('{empresa}', nome);
-
-                await session.socket.sendMessage(jid, { text: msg });
-
-                // Registra o envio
-                await prisma.mensagemLog.create({
-                    data: { campanhaId: camp.id, destinatario: final, status: 'ENVIADO' }
-                });
-                
-                // Atualiza contadores da campanha
-                await prisma.campanha.update({
-                    where: { id: camp.id },
-                    data: { processados: { increment: 1 }, ultimoEnvio: new Date() }
-                });
-
-                console.log(`[DISPATCHER] ✅ ${camp.nome} > ${final}`);
-            } catch (e) { 
-                console.error(`[DISPATCHER] Erro envio ${numero}:`, e); 
+            // 1. Se o número não tem DDI (tem 10 ou 11 digitos), adiciona 55
+            if (!final.startsWith('55') && (final.length === 10 || final.length === 11)) {
+                final = '55' + final;
             }
+
+            // 2. CORREÇÃO DO 9º DÍGITO
+            // Se for Brasil (55) e tiver 13 dígitos (55 + DDD + 9 + 8 Numeros)
+            // Ex: 55 11 9 8888 7777 -> Transformamos para 55 11 8888 7777
+            if (final.startsWith('55') && final.length === 13 && final[4] === '9') {
+                // Remove o caractere na posição 4 (o nono dígito)
+                final = final.slice(0, 4) + final.slice(5);
+            }
+
+            // Cria o JID do WhatsApp
+            const jid = `${final}@s.whatsapp.net`;
+
+            console.log(`[DISPATCHER] 🚀 Enviando para: ${final} (Original: ${numero})`);
+
+            // 1. TEXTO
+            if (camp.mensagem) {
+                const msgFormatada = camp.mensagem.replace('{empresa}', nomeCliente);
+                await session.socket.sendMessage(jid, { text: msgFormatada });
+            }
+
+            // 2. ANEXO (Baixa do Drive -> Envia Buffer)
+            if (camp.mediaUrl && camp.mediaUrl.length > 5) {
+                await sleep(1000);
+                const fileData = await GoogleDriveService.downloadFileToBuffer(camp.mediaUrl);
+                
+                if (fileData) {
+                    await session.socket.sendMessage(jid, { 
+                        document: fileData.buffer,
+                        mimetype: fileData.mime,
+                        fileName: 'Anexo'
+                    }).catch(async () => {
+                        if (fileData.mime.includes('image')) await session.socket.sendMessage(jid, { image: fileData.buffer });
+                    });
+                }
+            }
+
+            // 3. ÁUDIO (Modo Arquivo)
+            if (camp.audioUrl && camp.audioUrl.length > 5) {
+                await sleep(2000);
+                const audioData = await GoogleDriveService.downloadFileToBuffer(camp.audioUrl);
+
+                if (audioData) {
+                    await session.socket.sendMessage(jid, { 
+                        audio: audioData.buffer, 
+                        mimetype: 'audio/mp4', 
+                        ptt: false 
+                    }).catch(async () => {
+                         await session.socket.sendMessage(jid, { 
+                            document: audioData.buffer, mimetype: 'audio/mpeg', fileName: 'Audio.mp3'
+                        });
+                    });
+                }
+            }
+
+            // Registrar Log
+            await prisma.mensagemLog.create({ data: { campanhaId: camp.id, destinatario: final, status: 'ENVIADO' } });
+            await prisma.campanha.update({ where: { id: camp.id }, data: { processados: { increment: 1 }, ultimoEnvio: new Date() } });
+
+        } catch (e) {
+            console.error(`[DISPATCHER] ❌ Falha envio ${numero}:`, e);
         }
     }
 }

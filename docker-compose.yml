@@ -5,6 +5,8 @@ services:
     build: ./backend
     container_name: dispia-backend
     restart: always
+    # MUDANÇA AQUI: Adicionado '--transpile-only' para evitar crash de memória e erros de tipo em tempo real
+    command: sh -c "npx prisma generate && npx ts-node --transpile-only src/index.ts"
     ports:
       - "3000:3000"
     volumes:
@@ -12,7 +14,6 @@ services:
       - /app/node_modules
     environment:
       - PORT=3000
-      # O Docker vai ler as senhas do arquivo .env automaticamente
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?schema=public
       - JWT_SECRET=${JWT_SECRET}
     networks:

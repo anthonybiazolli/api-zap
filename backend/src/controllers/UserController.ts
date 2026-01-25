@@ -1,91 +1,95 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { Readable } from 'stream';
+import { GoogleDriveService } from '../services/GoogleDriveService';
 
 const prisma = new PrismaClient();
 
-// Função auxiliar para gerar ID curto (6 caracteres)
+// Helper para gerar ID curto para o nome da instância
 const generateShortId = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
 
 export class UserController {
 
-  // Listar Equipe
+  // 1. LISTAR EQUIPE
+  // Retorna os usuários vinculados ao mesmo Client (Empresa SaaS)
   async listMyTeam(req: Request, res: Response) {
       const { clientId } = req.params;
       try {
-          // Garante que clientId não é 'null' ou 'undefined' na busca
-          if (!clientId || clientId === 'null') return res.json([]);
+          if (!clientId || clientId === 'null' || clientId === 'undefined') {
+              return res.json([]);
+          }
 
           const users = await prisma.user.findMany({
               where: { clientId },
-              select: { id: true, name: true, email: true, role: true, createdAt: true }
+              select: { 
+                  id: true, 
+                  name: true, 
+                  email: true, 
+                  role: true, 
+                  profilePicUrl: true, 
+                  createdAt: true 
+              },
+              orderBy: { createdAt: 'desc' }
           });
           return res.json(users);
-      } catch (e) { return res.status(500).json({ error: 'Erro ao listar equipe.' }); }
+      } catch (e) { 
+          console.error("Erro listMyTeam:", e);
+          return res.status(500).json({ error: 'Erro ao listar equipe.' }); 
+      }
   }
 
-  // Criar Novo Membro + Instância Automática
+  // 2. CRIAR MEMBRO DA EQUIPE
+  // Cria o usuário e já cria uma instância (WhatsApp) vinculada a ele
   async createMember(req: Request, res: Response) {
       const { name, email, password, role, creatorId } = req.body;
-
+      
       try {
-          // 1. Identificar criador e empresa
+          // Verifica quem está criando (para saber qual é a empresa/client)
           const creator = await prisma.user.findUnique({ 
-              where: { id: creatorId },
+              where: { id: creatorId }, 
               include: { client: true } 
           });
 
-          // Validação de Segurança
           if (!creator || !creator.client) {
-              return res.status(403).json({ error: 'Permissão negada ou empresa não encontrada.' });
+              return res.status(403).json({ error: 'Permissão negada. Criador não identificado.' });
           }
 
-          // === CORREÇÃO DO ERRO TYPESCRIPT ===
-          // Usamos 'creator.client.id' (que sabemos que existe) em vez de 'creator.clientId' (que pode ser null)
           const empresaId = creator.client.id; 
-          const maxUsers = creator.client.maxUsers;
-          const maxInstances = creator.client.maxInstances;
-
-          // 2. Verificar Limites de Usuários
-          const currentUsers = await prisma.user.count({ where: { clientId: empresaId } });
-          if (currentUsers >= maxUsers) {
-              return res.status(403).json({ error: `Limite de ${maxUsers} usuários atingido.` });
+          
+          // Verifica Limite de Usuários do Plano
+          const count = await prisma.user.count({ where: { clientId: empresaId } });
+          if (count >= creator.client.maxUsers) {
+              return res.status(403).json({ error: `Limite de usuários do plano atingido (${creator.client.maxUsers}).` });
           }
 
-          // 3. Verificar Limites de Instâncias
-          const currentInstances = await prisma.instance.count({ where: { clientId: empresaId } });
-          if (currentInstances >= maxInstances) {
-              return res.status(403).json({ error: `Limite de WhatsApps atingido. Faça upgrade do plano.` });
-          }
-
-          // 4. Verificar Email
+          // Verifica se email já existe
           const exists = await prisma.user.findUnique({ where: { email } });
-          if (exists) return res.status(400).json({ error: 'Email já cadastrado.' });
+          if (exists) return res.status(400).json({ error: 'Este e-mail já está cadastrado.' });
 
           const hash = await bcrypt.hash(password, 10);
           const instanceName = `ID-${generateShortId()}`; 
 
-          // 5. Transação: Cria Usuário E Instância juntos
+          // Transação: Cria Usuário + Cria Instância para ele
           const result = await prisma.$transaction(async (tx) => {
-              // Cria o Usuário
               const newUser = await tx.user.create({
-                  data: {
+                  data: { 
                       name, 
                       email, 
                       password: hash, 
                       role: role || 'AGENT', 
-                      clientId: empresaId // <--- Correção aqui (Usa a string validada)
+                      clientId: empresaId 
                   }
               });
 
-              // Cria a Instância AUTOMATICAMENTE vinculada ao novo usuário
+              // Cria a instância desconectada automaticamente
               await tx.instance.create({
-                  data: {
-                      name: instanceName,
-                      status: 'disconnected',
-                      clientId: empresaId, // <--- Correção aqui
+                  data: { 
+                      name: instanceName, 
+                      status: 'disconnected', 
+                      clientId: empresaId, 
                       ownerId: newUser.id 
                   }
               });
@@ -96,17 +100,68 @@ export class UserController {
           return res.json(result);
 
       } catch (e: any) { 
-          console.error(e);
-          return res.status(500).json({ error: 'Erro ao criar usuário e sessão.' }); 
+          console.error("Erro createMember:", e);
+          return res.status(500).json({ error: 'Erro ao criar usuário.' }); 
       }
   }
 
-  // Remover Membro
+  // 3. DELETAR MEMBRO
   async deleteMember(req: Request, res: Response) {
       const { id } = req.params;
       try {
+          // Ao deletar o usuário, o Prisma (Cascade) deleta as instâncias dele
           await prisma.user.delete({ where: { id } });
-          return res.json({ message: 'Removido.' });
-      } catch (e) { return res.status(500).json({ error: 'Erro ao remover.' }); }
+          return res.json({ message: 'Usuário removido com sucesso.' });
+      } catch (e) { 
+          return res.status(500).json({ error: 'Erro ao remover usuário.' }); 
+      }
+  }
+
+  // 4. ATUALIZAR PERFIL (COM FOTO)
+  async updateProfile(req: Request, res: Response) {
+      const { id } = req.params;
+      const { password, name } = req.body;
+      const file = req.file; // Vem do Multer
+
+      try {
+          const updateData: any = {};
+          
+          if (name) updateData.name = name;
+          if (password && password.trim() !== '') {
+              updateData.password = await bcrypt.hash(password, 10);
+          }
+
+          // Upload de Foto para o Google Drive
+          if (file) {
+              console.log(`[PROFILE] Iniciando upload de foto para user ${id}...`);
+              const stream = new Readable();
+              stream.push(file.buffer);
+              stream.push(null);
+              
+              const fileName = `profile_${id}_${Date.now()}.jpg`;
+              
+              // Usa o serviço que já configuramos e corrigimos
+              const driveLink = await GoogleDriveService.uploadBaileysMedia(stream, fileName, file.mimetype);
+              
+              if (driveLink) {
+                  updateData.profilePicUrl = driveLink;
+                  console.log(`[PROFILE] Foto atualizada: ${driveLink}`);
+              } else {
+                  console.error(`[PROFILE] Falha ao subir foto no Drive.`);
+              }
+          }
+
+          const user = await prisma.user.update({
+              where: { id },
+              data: updateData,
+              select: { id: true, name: true, email: true, role: true, profilePicUrl: true }
+          });
+
+          return res.json(user);
+
+      } catch (e) {
+          console.error("Erro updateProfile:", e);
+          return res.status(500).json({ error: 'Erro ao atualizar perfil.' });
+      }
   }
 }

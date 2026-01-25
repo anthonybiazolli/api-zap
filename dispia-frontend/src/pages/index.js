@@ -76,7 +76,6 @@ export default function Dashboard() {
       fetchData(user.id);
   };
 
-  // === NOVA FUNÇÃO: DELETAR ===
   const handleDeleteInstance = async (instanceId) => {
       if(!confirm('⚠️ ATENÇÃO: Isso excluirá permanentemente esta instância.\nDeseja continuar?')) return;
       try {
@@ -108,14 +107,21 @@ export default function Dashboard() {
 
       <main className="p-6 max-w-7xl mx-auto">
         
-        {/* ATALHOS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        {/* ATALHOS - AGORA 4 COLUNAS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <Link href="/cadastros" className="bg-gradient-to-r from-blue-700 to-blue-900 p-6 rounded-xl hover:scale-[1.01] transition shadow-lg border border-blue-500/30 flex justify-between items-center cursor-pointer">
                 <div><h3 className="font-bold text-xl text-white">Cadastros</h3><p className="text-blue-200 text-sm">Gerenciar Base</p></div><span className="text-3xl">🏢</span>
             </Link>
+            
             <Link href="/campanhas" className="bg-gradient-to-r from-purple-700 to-purple-900 p-6 rounded-xl hover:scale-[1.01] transition shadow-lg border border-purple-500/30 flex justify-between items-center cursor-pointer">
                 <div><h3 className="font-bold text-xl text-white">Campanhas</h3><p className="text-purple-200 text-sm">Disparos em Massa</p></div><span className="text-3xl">🚀</span>
             </Link>
+
+            {/* NOVO: CHAT AO VIVO */}
+            <Link href="/chat" className="bg-gradient-to-r from-rose-700 to-pink-900 p-6 rounded-xl hover:scale-[1.01] transition shadow-lg border border-pink-500/30 flex justify-between items-center cursor-pointer">
+                <div><h3 className="font-bold text-xl text-white">Chat Ao Vivo</h3><p className="text-pink-200 text-sm">Atendimento Real</p></div><span className="text-3xl">💬</span>
+            </Link>
+
             {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') ? (
                 <Link href="/equipe" className="bg-gradient-to-r from-emerald-700 to-emerald-900 p-6 rounded-xl hover:scale-[1.01] transition shadow-lg border border-emerald-500/30 flex justify-between items-center cursor-pointer">
                     <div><h3 className="font-bold text-xl text-white">Minha Equipe</h3><p className="text-emerald-200 text-sm">Criar Usuários</p></div><span className="text-3xl">👥</span>
@@ -143,7 +149,6 @@ export default function Dashboard() {
             {instances.map(inst => (
                 <div key={inst.id} className={`relative p-6 rounded-xl border-2 transition shadow-xl bg-[#1e293b] ${inst.statusReal === 'connected' ? 'border-green-500/50' : 'border-gray-700'}`}>
                     
-                    {/* Botão de Excluir (Lixeira) no topo direito */}
                     {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
                         <button onClick={() => handleDeleteInstance(inst.id)} className="absolute top-4 right-4 text-red-500 hover:text-red-400 bg-red-900/20 p-2 rounded hover:bg-red-900/40 transition z-10" title="Excluir Instância">
                             🗑️

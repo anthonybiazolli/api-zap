@@ -8,13 +8,13 @@ datasource db {
 }
 
 model Client {
-  id           String   @id @default(uuid())
-  name         String   
-  documento    String?  
-  status       String   @default("ACTIVE") 
-  maxUsers     Int      @default(1)
-  maxInstances Int      @default(1)
-  planName     String   @default("Starter") 
+  id           String    @id @default(uuid())
+  name         String    
+  documento    String?   
+  status       String    @default("ACTIVE") 
+  maxUsers     Int       @default(1)
+  maxInstances Int       @default(1)
+  planName     String    @default("Starter") 
   users        User[]
   instances    Instance[]
   createdAt    DateTime @default(now())
@@ -23,95 +23,116 @@ model Client {
 }
 
 model User {
-  id             String     @id @default(uuid())
-  email          String     @unique
-  password       String
-  name           String
-  role           String     @default("AGENT") 
-  clientId       String?
-  client         Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          String    @default("AGENT") 
+  profilePicUrl String?   
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   
-  // === NOVO RELACIONAMENTO ===
   ownedInstances Instance[] @relation("UserInstances")
 
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
   @@map("users")
 }
 
 model Instance {
-  id          String   @id @default(uuid())
-  name        String
-  status      String   @default("disconnected")
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  name         String
+  status       String    @default("disconnected")
+  clientId     String
+  client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  // === NOVO CAMPO: DONO DA SESSÃO ===
-  ownerId     String?  
-  owner       User?    @relation("UserInstances", fields: [ownerId], references: [id])
+  ownerId      String?
+  owner        User?     @relation("UserInstances", fields: [ownerId], references: [id])
 
-  empresas    Empresa[]
-  campanhas   Campanha[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  empresas     Empresa[]
+  campanhas    Campanha[]
+  chatMessages ChatMessage[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   @@map("instances")
 }
 
 model Empresa {
-  id                   String    @id @default(uuid())
-  instanceId           String?   
-  instance             Instance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  cnpj                 String    @unique
-  razaoSocial          String
-  nomeFantasia         String?
-  email                String?
-  telefone             String?
-  cnae                 String?
-  dataAbertura         DateTime?
-  statusRF             String?   
-  dataAtualizacaoAPI   DateTime? 
-  endereco             Json?     
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  instanceId         String?
+  instance           Instance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  cnpj               String    @unique
+  razaoSocial        String
+  nomeFantasia       String?
+  email              String?
+  telefone           String?
+  cnae               String?
+  dataAbertura       DateTime?
+  statusRF           String?   
+  dataAtualizacaoAPI DateTime?
+  
+  endereco           Json?
+  qsa                Json?     // <--- CAMPO ADICIONADO PARA SÓCIOS (QSA)
+  
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   @@map("empresas")
 }
 
 model Campanha {
-  id             String    @id @default(uuid())
-  instanceId     String?   
-  instance       Instance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  nome           String
-  status         String    @default("PAUSADA") 
-  mensagem       String    
-  estadosAlvo    String    
-  dddsAlvo       String    
-  alvosManuais   String?   @db.Text 
+  id              String    @id @default(uuid())
+  instanceId      String?
+  instance        Instance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  nome            String
+  status          String    @default("PAUSADA") 
+  mensagem        String    
+  estadosAlvo     String    
+  dddsAlvo        String    
+  alvosManuais    String?   @db.Text 
   
-  tipoEnvio      String    @default("IMEDIATO") 
-  dataAgendamento DateTime? 
+  tipoEnvio       String    @default("IMEDIATO") 
+  dataAgendamento DateTime?
+  iniciaChat      Boolean   @default(false)
 
-  diasSemana     String    
-  horaInicio     String    
-  horaFim        String    
-  limiteDiario   Int       @default(100)
-  totalAlvos     Int       @default(0) 
-  processados    Int       @default(0) 
-  ultimoEnvio    DateTime? 
-  logs           MensagemLog[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  mediaUrl        String?   
+  audioUrl        String?   
+
+  diasSemana      String    
+  horaInicio      String    
+  horaFim         String    
+  limiteDiario    Int       @default(100)
+  totalAlvos      Int       @default(0) 
+  processados     Int       @default(0) 
+  ultimoEnvio     DateTime?
+  logs            MensagemLog[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   @@map("campanhas")
 }
 
 model MensagemLog {
-  id             String    @id @default(uuid())
-  campanhaId     String
-  destinatario   String    
-  status         String    
-  respondida     Boolean   @default(false)
-  conversaLonga  Boolean   @default(false) 
-  dataEnvio      DateTime  @default(now())
-  dataResposta   DateTime?
-  campanha       Campanha  @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  id            String    @id @default(uuid())
+  campanhaId    String
+  destinatario  String    
+  status        String    
+  respondida    Boolean   @default(false)
+  conversaLonga Boolean   @default(false) 
+  dataEnvio     DateTime  @default(now())
+  dataResposta  DateTime?
+  campanha      Campanha  @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
   @@map("mensagem_logs")
+}
+
+model ChatMessage {
+  id           String    @id @default(uuid())
+  instanceId   String
+  remoteJid    String    
+  fromMe       Boolean
+  content      String    @db.Text
+  mediaUrl     String?   
+  timestamp    DateTime @default(now())
+  
+  instance     Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  @@map("chat_messages")
 }

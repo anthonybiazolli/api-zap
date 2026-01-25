@@ -6,4 +6,4 @@ sessions_config.json
 backend/auth_info_baileys
 backend/sessions_config.json
 *.log
-.DS_Store
+.DS_Storebackend/google_credentials.json
